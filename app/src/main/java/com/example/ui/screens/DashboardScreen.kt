@@ -324,7 +324,12 @@ fun DashboardScreen(
                 }
             }
 
-            // 2. Key App Functions (Quick Navigation Grid)
+            // 2. Reusable BMI Calculator Component
+            item {
+                com.example.ui.components.BmiCalculatorCard()
+            }
+
+            // 3. Key App Functions (Quick Navigation Grid)
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(

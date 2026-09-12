@@ -297,11 +297,20 @@ class PersonViewModel(
                     return@launch
                 }
 
-                // Delete from Firestore so sync doesn't recreate it
-                syncHelper?.deleteHouseholdFromFirestore(household.householdUuid)
+                // Delete from Firestore and check result
+                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
+                    val cloudResult = syncHelper.deleteHouseholdFromFirestore(household.householdUuid)
+                    if (cloudResult.isFailure) {
+                        val cloudEx = cloudResult.exceptionOrNull()
+                        withContext(Dispatchers.Main) {
+                            onResult(false, "ลบข้อมูลในเครื่องสำเร็จ แต่ลบ Cloud ไม่สำเร็จ: ${cloudEx?.message}")
+                        }
+                        return@launch
+                    }
+                }
 
                 withContext(Dispatchers.Main) {
-                    android.util.Log.d("PersonViewModel", "Household deleted successfully")
+                    android.util.Log.d("PersonViewModel", "Household deleted successfully (Local & Cloud)")
                     onResult(true, null)
                 }
             } catch (e: Exception) {

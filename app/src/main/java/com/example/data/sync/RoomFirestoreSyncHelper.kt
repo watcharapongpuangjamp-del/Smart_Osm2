@@ -253,28 +253,35 @@ class RoomFirestoreSyncHelper(
     }
 
     /**
-     * Deletes a household from Firestore by UUID.
+     * Deletes a household and its associated persons from Firestore atomically using a batch write.
      */
     suspend fun deleteHouseholdFromFirestore(householdUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val firestore = getFirestore()
-            firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid).delete().await()
-
-            // Also delete associated persons
+            
+            // Query associated persons first
             val personDocs = firestore.collection(COLLECTION_PERSONS)
                 .whereEqualTo("householdUuid", householdUuid)
                 .get()
                 .await()
 
             val batch = firestore.batch()
+            
+            // Delete household document
+            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid)
+            batch.delete(hRef)
+
+            // Delete all person documents in the same batch
             for (doc in personDocs.documents) {
                 batch.delete(doc.reference)
             }
+
+            // Commit atomic batch
             batch.commit().await()
 
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete household $householdUuid from Firestore", e)
+            Log.e(TAG, "Failed to delete household $householdUuid from Firestore atomically", e)
             Result.failure(e)
         }
     }
