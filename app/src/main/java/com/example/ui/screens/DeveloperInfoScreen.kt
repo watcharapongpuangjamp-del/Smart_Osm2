@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.LocalLibrary
 import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sync
@@ -47,7 +48,8 @@ import com.example.ui.theme.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeveloperInfoScreen(
-    onNavigateToCloudSync: () -> Unit = {}
+    onNavigateToCloudSync: () -> Unit = {},
+    onNavigateToHealthKnowledge: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
@@ -218,6 +220,55 @@ fun DeveloperInfoScreen(
                         }
                     }
                     Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+
+            // Health Knowledge & BP / BMI Guide Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onNavigateToHealthKnowledge)
+                    .shadow(4.dp, RoundedCornerShape(22.dp), spotColor = CardShadowTint),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MintAccent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.LocalLibrary, contentDescription = null, tint = Color.Black, modifier = Modifier.size(26.dp))
+                        }
+                        Column {
+                            Text(
+                                text = "คู่มือเกณฑ์สุขภาพและความรู้ อสม.",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "เกณฑ์ความดัน BMI และความรู้ตามช่วงวัย",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                    Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
             }
 

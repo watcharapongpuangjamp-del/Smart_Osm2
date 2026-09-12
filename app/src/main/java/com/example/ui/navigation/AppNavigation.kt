@@ -162,12 +162,18 @@ fun AppNavigation(
             }
             composable(BottomNavItem.Info.route) {
                 DeveloperInfoScreen(
-                    onNavigateToCloudSync = { navController.navigate("cloud_sync") }
+                    onNavigateToCloudSync = { navController.navigate("cloud_sync") },
+                    onNavigateToHealthKnowledge = { navController.navigate("health_knowledge") }
                 )
             }
             composable("cloud_sync") {
                 CloudSyncScreen(
                     viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable("health_knowledge") {
+                HealthKnowledgeScreen(
                     onBack = { navController.popBackStack() }
                 )
             }
