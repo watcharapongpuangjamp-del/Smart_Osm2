@@ -13,7 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
@@ -26,6 +26,10 @@ import android.widget.Toast
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,8 +50,35 @@ fun DeveloperInfoScreen(
     onNavigateToCloudSync: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val activity = context as? android.app.Activity
     val scrollState = rememberScrollState()
     val isDark = isSystemInDarkTheme()
+
+    var showExitDialog by remember { mutableStateOf(false) }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text("ยืนยันการปิดแอปพลิเคชัน") },
+            text = { Text("คุณต้องการออกจากแอปพลิเคชัน Smart OSM ใช่หรือไม่?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExitDialog = false
+                        activity?.finish()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("ออกจากแอป")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text("ยกเลิก")
+                }
+            }
+        )
+    }
 
     val badgeBg = if (isDark) StatusVerifiedBgDark else StatusVerifiedBg
     val badgeFg = if (isDark) StatusVerifiedFgDark else StatusVerifiedFg
@@ -67,6 +98,9 @@ fun DeveloperInfoScreen(
                 actions = {
                     IconButton(onClick = onNavigateToCloudSync) {
                         Icon(Icons.Filled.Sync, contentDescription = "สำรองข้อมูลและซิงค์", tint = Color.White)
+                    }
+                    IconButton(onClick = { showExitDialog = true }) {
+                        Icon(Icons.Filled.Clear, contentDescription = "ปิดแอป", tint = Color.White)
                     }
                     ThemeQuickToggleButton(iconTint = Color.White)
                 },
