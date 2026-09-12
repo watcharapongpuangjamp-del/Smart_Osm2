@@ -71,7 +71,13 @@ fun HouseDetailScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        personToDelete?.let { viewModel.delete(it) }
+                        personToDelete?.let { 
+                            viewModel.delete(it) { success, errorMsg -> 
+                                if (!success && errorMsg != null) {
+                                    deleteErrorMsg = errorMsg
+                                }
+                            }
+                        }
                         personToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)

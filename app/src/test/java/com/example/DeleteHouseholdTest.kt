@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -110,5 +111,64 @@ class DeleteHouseholdTest {
         // Verify persons are deleted via ON DELETE CASCADE
         assertNull(repository.getPersonByUuid("P-DEL-001"))
         assertNull(repository.getPersonByUuid("P-DEL-002"))
+    }
+    
+    @Test
+    fun testDeletePersonPreservesHistory() = runBlocking {
+        val household = Household(
+            householdUuid = "H-DEL-003",
+            houseNo = "100/3",
+            villageNo = "8",
+            subdistrict = "ป่าขะ",
+            district = "บ้านนา",
+            province = "นครนายก"
+        )
+        val householdId = repository.insertHousehold(household)
+
+        val person = Person(
+            personUuid = "P-DEL-003",
+            householdId = householdId,
+            fullName = "นายทดสอบ สาม",
+            gender = Gender.MALE,
+            birthDate = LocalDate.of(1990, 1, 1),
+            houseStatus = HouseholdRole.RESIDENT,
+            personStatus = PersonStatus.ALIVE
+        )
+        repository.insert(person)
+
+        val insertedPerson = repository.getPersonByUuid("P-DEL-003")
+        assertNotNull(insertedPerson)
+
+        // Delete person
+        repository.delete(insertedPerson!!)
+
+        // Verify person is deleted locally
+        assertNull(repository.getPersonByUuid("P-DEL-003"))
+
+        // Verify PersonHistory is created for DELETE action
+        val historyList = repository.getHistoryForPerson(insertedPerson.id).first()
+        assertTrue(historyList.any { it.action == "DELETE" })
+    }
+
+    @Test
+    fun testCloudToRoomDeletionRemovesLocalRecord() = runBlocking {
+        val household = Household(
+            householdUuid = "H-TOMBSTONE-001",
+            houseNo = "101/1",
+            villageNo = "8",
+            subdistrict = "ป่าขะ",
+            district = "บ้านนา",
+            province = "นครนายก"
+        )
+        val householdId = repository.insertHousehold(household)
+
+        // Simulate Cloud -> Room tombstone deletion logic
+        val deletedUuids = setOf("H-TOMBSTONE-001")
+        val allLocalHouseholdsToDelete = repository.getAllHouseholds().filter { deletedUuids.contains(it.householdUuid) }
+        for (h in allLocalHouseholdsToDelete) {
+            repository.deleteHousehold(h)
+        }
+
+        assertNull(repository.getHouseholdByUuid("H-TOMBSTONE-001"))
     }
 }

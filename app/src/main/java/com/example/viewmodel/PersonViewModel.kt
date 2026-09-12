@@ -327,7 +327,33 @@ class PersonViewModel(
 
     fun insert(person: Person) = viewModelScope.launch { repository.insert(person) }
     fun update(person: Person) = viewModelScope.launch { repository.update(person) }
-    fun delete(person: Person) = viewModelScope.launch { repository.delete(person) }
+    fun delete(person: Person, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.delete(person)
+                
+                val helper = syncHelper
+                if (helper != null && helper.isFirebaseConfigured()) {
+                    val cloudResult = helper.deletePersonFromFirestore(person.personUuid)
+                    if (cloudResult.isFailure) {
+                        val cloudEx = cloudResult.exceptionOrNull()
+                        withContext(Dispatchers.Main) {
+                            onResult(false, "ลบข้อมูลในเครื่องสำเร็จ แต่ลบ Cloud ไม่สำเร็จ: ${cloudEx?.message}")
+                        }
+                        return@launch
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    onResult(true, null)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, e.message ?: "เกิดข้อผิดพลาดที่ไม่คาดคิด")
+                }
+            }
+        }
+    }
     
     suspend fun getPersonById(id: Long): Person? = repository.getPersonById(id)
     suspend fun getPersonByNationalId(nationalId: String): Person? = repository.getPersonByNationalId(nationalId)

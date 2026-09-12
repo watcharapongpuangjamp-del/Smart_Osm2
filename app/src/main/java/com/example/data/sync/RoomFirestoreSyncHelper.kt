@@ -259,54 +259,67 @@ class RoomFirestoreSyncHelper(
     }
 
     /**
-     * Deletes a household and its associated persons from Firestore atomically using a batch write,
+     * Deletes a household and its associated persons from Firestore,
      * and writes tombstones to prevent resurrection during bidirectional sync.
+     * Uses chunking to stay well within Firestore's 500 write limit per batch.
      */
     suspend fun deleteHouseholdFromFirestore(householdUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val firestore = getFirestore()
             
             // Query associated persons first
-            val personDocRefs = mutableListOf<com.google.firebase.firestore.DocumentReference>()
-            val personUuids = mutableListOf<String>()
             val personDocs = firestore.collection(COLLECTION_PERSONS)
                 .whereEqualTo("householdUuid", householdUuid)
                 .get()
                 .await()
 
+            val personDocRefs = mutableListOf<com.google.firebase.firestore.DocumentReference>()
+            val personUuids = mutableListOf<String>()
+            
             for (doc in personDocs.documents) {
                 personDocRefs.add(doc.reference)
                 val pUuid = doc.getString("personUuid") ?: doc.id
                 personUuids.add(pUuid)
             }
 
-            val batch = firestore.batch()
+            val timestamp = System.currentTimeMillis()
+            val tombstoneOps = mutableListOf<(com.google.firebase.firestore.WriteBatch) -> Unit>()
+            val deleteOps = mutableListOf<(com.google.firebase.firestore.WriteBatch) -> Unit>()
             
-            // Delete household document
-            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid)
-            batch.delete(hRef)
-
-            // Delete all person documents in the same batch
-            for (pRef in personDocRefs) {
-                batch.delete(pRef)
-            }
-
-            // Write tombstone for household
+            // Tombstone for household
             val hTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("household_$householdUuid")
-            batch.set(hTombstoneRef, mapOf("uuid" to householdUuid, "type" to "household", "deletedAt" to System.currentTimeMillis()))
-
-            // Write tombstones for persons
+            tombstoneOps.add { b -> b.set(hTombstoneRef, mapOf("uuid" to householdUuid, "type" to "household", "deletedAt" to timestamp)) }
+            
+            // Tombstones for persons
             for (pUuid in personUuids) {
                 val pTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("person_$pUuid")
-                batch.set(pTombstoneRef, mapOf("uuid" to pUuid, "type" to "person", "deletedAt" to System.currentTimeMillis()))
+                tombstoneOps.add { b -> b.set(pTombstoneRef, mapOf("uuid" to pUuid, "type" to "person", "deletedAt" to timestamp)) }
             }
 
-            // Commit atomic batch
-            batch.commit().await()
+            // Delete household document
+            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid)
+            deleteOps.add { b -> b.delete(hRef) }
+
+            // Delete all person documents
+            for (pRef in personDocRefs) {
+                deleteOps.add { b -> b.delete(pRef) }
+            }
+
+            // Execute tombstones first, then deletes (so if halfway failure, they are at least tombstoned)
+            val allOps = tombstoneOps + deleteOps
+            
+            // Chunk at 400 to stay safely below 500 limit
+            for (chunk in allOps.chunked(400)) {
+                val batch = firestore.batch()
+                for (op in chunk) {
+                    op(batch)
+                }
+                batch.commit().await()
+            }
 
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete household $householdUuid from Firestore atomically", e)
+            Log.e(TAG, "Failed to delete household $householdUuid from Firestore", e)
             Result.failure(e)
         }
     }
@@ -354,6 +367,16 @@ class RoomFirestoreSyncHelper(
             // Fetch tombstones
             val tombstoneDocs = firestore.collection(COLLECTION_TOMBSTONES).get().await()
             val deletedUuids = tombstoneDocs.documents.mapNotNull { it.getString("uuid") }.toSet()
+
+            // Remove stale local Room records that have been deleted in Cloud
+            val allLocalHouseholdsToDelete = repository.getAllHouseholds().filter { deletedUuids.contains(it.householdUuid) }
+            for (h in allLocalHouseholdsToDelete) {
+                repository.deleteHousehold(h)
+            }
+            val allLocalPersonsToDelete = repository.getAllPersonsList().filter { deletedUuids.contains(it.personUuid) }
+            for (p in allLocalPersonsToDelete) {
+                repository.delete(p)
+            }
 
             val householdDocs = firestore.collection(COLLECTION_HOUSEHOLDS).get().await()
             val personDocs = firestore.collection(COLLECTION_PERSONS).get().await()
