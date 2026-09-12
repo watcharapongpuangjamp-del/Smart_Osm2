@@ -59,6 +59,23 @@ fun DashboardScreen(
 
     val isDark = isSystemInDarkTheme()
 
+    var showNotificationDialog by remember { mutableStateOf(false) }
+    var notificationTitle by remember { mutableStateOf("") }
+    var notificationMessage by remember { mutableStateOf("") }
+
+    if (showNotificationDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotificationDialog = false },
+            title = { Text(notificationTitle, fontWeight = FontWeight.Bold) },
+            text = { Text(notificationMessage) },
+            confirmButton = {
+                Button(onClick = { showNotificationDialog = false }) {
+                    Text("รับทราบ")
+                }
+            }
+        )
+    }
+
     // Calculated citizen summaries
     val maleCount = remember(allPersons) { allPersons.count { it.gender == Gender.MALE } }
     val femaleCount = remember(allPersons) { allPersons.count { it.gender == Gender.FEMALE } }
@@ -132,6 +149,13 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        notificationTitle = "แจ้งเตือนงานสาธารณสุขชุมชน (อสม.)"
+                        notificationMessage = "• สำรวจผู้สูงอายุติดบ้าน/ติดเตียงประจำเดือน\n• ตรวจคัดกรองโรคความดันโลหิตและเบาหวาน\n• บันทึกข้อมูลครัวเรือนที่ยังขาดพิกัด GPS"
+                        showNotificationDialog = true
+                    }) {
+                        Icon(Icons.Filled.Notifications, contentDescription = "การแจ้งเตือน", tint = Color.White)
+                    }
                     IconButton(onClick = onNavigateToQrScan) {
                         Icon(Icons.Filled.CameraAlt, contentDescription = "สแกน QR Code", tint = Color.White)
                     }
