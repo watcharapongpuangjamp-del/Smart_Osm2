@@ -317,8 +317,19 @@ class RoomFirestoreSyncHelper(
 
             val timestamp = System.currentTimeMillis()
             val entityOpsPairs = mutableListOf<List<(com.google.firebase.firestore.WriteBatch) -> Unit>>()
+
+            // 1. Household tombstone and delete FIRST
+            // Ensures if multi-batch chunking fails midway, at least the household is tombstoned.
+            // This prevents the household and any remaining orphaned persons from resurrecting on next sync.
+            val hTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("household_$householdUuid")
+            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid)
             
-            // 1. Group persons' tombstones and deletes together
+            entityOpsPairs.add(listOf(
+                { b -> b.set(hTombstoneRef, mapOf("uuid" to householdUuid, "type" to "household", "deletedAt" to timestamp)) },
+                { b -> b.delete(hRef) }
+            ))
+            
+            // 2. Group persons' tombstones and deletes together AFTER household
             for (i in personUuids.indices) {
                 val pUuid = personUuids[i]
                 val pRef = personDocRefs[i]
@@ -329,15 +340,6 @@ class RoomFirestoreSyncHelper(
                     { b -> b.delete(pRef) }
                 ))
             }
-            
-            // 2. Household tombstone and delete LAST
-            val hTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("household_$householdUuid")
-            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid)
-            
-            entityOpsPairs.add(listOf(
-                { b -> b.set(hTombstoneRef, mapOf("uuid" to householdUuid, "type" to "household", "deletedAt" to timestamp)) },
-                { b -> b.delete(hRef) }
-            ))
             
             // Chunk entity pairs at 200 pairs (400 ops) to stay safely below 500 limit
             for (chunk in entityOpsPairs.chunked(200)) {

@@ -288,6 +288,22 @@ class PersonViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 android.util.Log.d("PersonViewModel", "Starting delete household: id=${household.id}, uuid=${household.householdUuid}")
+                
+                // 1. Delete from Firestore FIRST
+                // This ensures Cloud tombstones are written BEFORE local Room deletion.
+                // Prevents resurrection if app crashes between local delete and Cloud sync.
+                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
+                    val cloudResult = syncHelper.deleteHouseholdFromFirestore(household.householdUuid)
+                    if (cloudResult.isFailure) {
+                        val cloudEx = cloudResult.exceptionOrNull()
+                        withContext(Dispatchers.Main) {
+                            onResult(false, "ลบข้อมูล Cloud ไม่สำเร็จ (ป้องกันการสูญหายหรือคืนชีพ): ${cloudEx?.message}")
+                        }
+                        return@launch
+                    }
+                }
+
+                // 2. Delete locally
                 val result = repository.deleteHousehold(household)
                 if (result.isFailure) {
                     val ex = result.exceptionOrNull()
@@ -295,18 +311,6 @@ class PersonViewModel(
                         onResult(false, ex?.message ?: "เกิดข้อผิดพลาดในการลบบ้าน")
                     }
                     return@launch
-                }
-
-                // Delete from Firestore and check result
-                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
-                    val cloudResult = syncHelper.deleteHouseholdFromFirestore(household.householdUuid)
-                    if (cloudResult.isFailure) {
-                        val cloudEx = cloudResult.exceptionOrNull()
-                        withContext(Dispatchers.Main) {
-                            onResult(false, "ลบข้อมูลในเครื่องสำเร็จ แต่ลบ Cloud ไม่สำเร็จ: ${cloudEx?.message}")
-                        }
-                        return@launch
-                    }
                 }
 
                 withContext(Dispatchers.Main) {
