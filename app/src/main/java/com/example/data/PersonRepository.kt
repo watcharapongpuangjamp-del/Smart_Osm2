@@ -1,5 +1,6 @@
 package com.example.data
 
+import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.squareup.moshi.FromJson
@@ -47,8 +48,15 @@ class PersonRepository(
         householdDao.update(household)
     }
 
-    suspend fun deleteHousehold(household: Household) {
-        householdDao.delete(household)
+    suspend fun deleteHousehold(household: Household): Result<Unit> {
+        return try {
+            Log.d("PersonRepository", "Deleting household id: ${household.id}, uuid: ${household.householdUuid}, houseNo: ${household.houseNo}")
+            householdDao.delete(household)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("PersonRepository", "Failed to delete household id: ${household.id}", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun getHouseholdById(id: Long): Household? {

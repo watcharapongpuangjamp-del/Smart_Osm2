@@ -50,6 +50,18 @@ fun HouseDetailScreen(
     
     var personToDelete by remember { mutableStateOf<Person?>(null) }
     var showDeleteHouseholdDialog by remember { mutableStateOf(false) }
+    var deleteErrorMsg by remember { mutableStateOf<String?>(null) }
+
+    if (deleteErrorMsg != null) {
+        AlertDialog(
+            onDismissRequest = { deleteErrorMsg = null },
+            title = { Text("เกิดข้อผิดพลาด") },
+            text = { Text(deleteErrorMsg ?: "") },
+            confirmButton = {
+                Button(onClick = { deleteErrorMsg = null }) { Text("ตกลง") }
+            }
+        )
+    }
 
     if (personToDelete != null) {
         AlertDialog(
@@ -81,9 +93,14 @@ fun HouseDetailScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteHousehold(house)
-                        showDeleteHouseholdDialog = false
-                        onNavigateBack()
+                        viewModel.deleteHousehold(house) { success, errorMsg ->
+                            showDeleteHouseholdDialog = false
+                            if (success) {
+                                onNavigateBack()
+                            } else {
+                                deleteErrorMsg = errorMsg ?: "ไม่สามารถลบบ้านได้"
+                            }
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) { Text("ลบบ้านและสมาชิก") }

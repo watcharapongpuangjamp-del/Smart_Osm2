@@ -284,7 +284,34 @@ class PersonViewModel(
         }
     }
     fun updateHousehold(household: Household) = viewModelScope.launch { repository.updateHousehold(household) }
-    fun deleteHousehold(household: Household) = viewModelScope.launch { repository.deleteHousehold(household) }
+    fun deleteHousehold(household: Household, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                android.util.Log.d("PersonViewModel", "Starting delete household: id=${household.id}, uuid=${household.householdUuid}")
+                val result = repository.deleteHousehold(household)
+                if (result.isFailure) {
+                    val ex = result.exceptionOrNull()
+                    withContext(Dispatchers.Main) {
+                        onResult(false, ex?.message ?: "เกิดข้อผิดพลาดในการลบบ้าน")
+                    }
+                    return@launch
+                }
+
+                // Delete from Firestore so sync doesn't recreate it
+                syncHelper?.deleteHouseholdFromFirestore(household.householdUuid)
+
+                withContext(Dispatchers.Main) {
+                    android.util.Log.d("PersonViewModel", "Household deleted successfully")
+                    onResult(true, null)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PersonViewModel", "Exception deleting household", e)
+                withContext(Dispatchers.Main) {
+                    onResult(false, e.message ?: "เกิดข้อผิดพลาดที่ไม่คาดคิด")
+                }
+            }
+        }
+    }
     
     suspend fun getHouseholdById(id: Long): Household? = repository.getHouseholdById(id)
     fun getHouseholdWithPersonsById(id: Long) = repository.getHouseholdWithPersonsById(id)
