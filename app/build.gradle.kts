@@ -57,7 +57,10 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions { unitTests { 
+      isIncludeAndroidResources = true
+      isReturnDefaultValues = true 
+  } }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
@@ -146,6 +149,7 @@ dependencies {
   implementation(libs.vico.compose)
   implementation(libs.vico.compose.m3)
   implementation(libs.vico.core)
+  testImplementation("io.mockk:mockk:1.13.10")
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
