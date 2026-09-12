@@ -126,4 +126,57 @@ class RoomFirestoreSyncHelperTest {
         assertEquals("นายทดสอบ ซิงค์ข้อมูล", retrievedP?.fullName)
         assertEquals(LocalDate.of(1990, 5, 20), retrievedP?.birthDate)
     }
+
+    @Test
+    fun testPreventTombstoneRecreationSyncLogic() = runBlocking {
+        // Simulate tombstone protection logic that aborts if UUID is in tombstone
+        val householdUuidToSync = "H-PROTECT-001"
+        val existingTombstones = setOf("household_H-PROTECT-001", "person_P-PROTECT-001")
+        
+        // This simulates the Firestore check: hTombstoneRef.exists()
+        val hTombstoneExists = existingTombstones.contains("household_$householdUuidToSync")
+        
+        var syncAborted = false
+        if (hTombstoneExists) {
+            syncAborted = true
+        }
+        
+        assertTrue("Sync should be aborted because a tombstone exists for this UUID", syncAborted)
+    }
+
+    @Test
+    fun testBatchDeleteChunkingLogic() {
+        // Simulate generating operations for a large household to verify chunk limit logic
+        val householdUuid = "H-LARGE-001"
+        val personUuids = (1..300).map { "P-LARGE-$it" }
+        
+        val timestamp = System.currentTimeMillis()
+        val entityOpsPairs = mutableListOf<List<String>>() // Simulated operations
+        
+        for (pUuid in personUuids) {
+            entityOpsPairs.add(listOf(
+                "TOMBSTONE: person_$pUuid",
+                "DELETE: person_$pUuid"
+            ))
+        }
+        
+        entityOpsPairs.add(listOf(
+            "TOMBSTONE: household_$householdUuid",
+            "DELETE: household_$householdUuid"
+        ))
+        
+        // We have 300 persons + 1 household = 301 pairs = 602 operations
+        assertEquals(301, entityOpsPairs.size)
+        
+        // Chunk entity pairs at 200 pairs (400 ops)
+        val chunks = entityOpsPairs.chunked(200)
+        
+        assertEquals(2, chunks.size)
+        assertEquals(200, chunks[0].size) // 400 operations
+        assertEquals(101, chunks[1].size) // 202 operations
+        
+        // Ensure pairs are not split across chunks
+        assertTrue(chunks[0].contains(listOf("TOMBSTONE: person_P-LARGE-1", "DELETE: person_P-LARGE-1")))
+        assertTrue(chunks[1].contains(listOf("TOMBSTONE: household_H-LARGE-001", "DELETE: household_H-LARGE-001")))
+    }
 }

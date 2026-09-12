@@ -209,12 +209,36 @@ class RoomFirestoreSyncHelper(
     ): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
             val firestore = getFirestore()
+            
+            // Check if household has been tombstoned
+            val hTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES)
+                .document("household_${household.householdUuid}")
+                .get().await()
+            if (hTombstoneRef.exists()) {
+                return@withContext Result.failure(IllegalStateException("Cannot sync: Household ${household.householdUuid} was deleted on Cloud."))
+            }
+
+            // Filter out tombstoned persons
+            val tombstonedPersonUuids = mutableSetOf<String>()
+            if (persons.isNotEmpty()) {
+                for (chunk in persons.map { it.personUuid }.chunked(30)) {
+                    val docs = firestore.collection(COLLECTION_TOMBSTONES)
+                        .whereIn("uuid", chunk)
+                        .get().await()
+                    for (doc in docs.documents) {
+                        tombstonedPersonUuids.add(doc.getString("uuid") ?: "")
+                    }
+                }
+            }
+            
+            val validPersons = persons.filter { !tombstonedPersonUuids.contains(it.personUuid) }
+
             val batch = firestore.batch()
 
             val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(household.householdUuid)
             batch.set(hRef, householdToMap(household), SetOptions.merge())
 
-            for (p in persons) {
+            for (p in validPersons) {
                 val pRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
                 batch.set(pRef, personToMap(p, household.householdUuid, household.houseNo), SetOptions.merge())
             }
@@ -223,7 +247,7 @@ class RoomFirestoreSyncHelper(
 
             val result = SyncResult(
                 householdsSynced = 1,
-                personsSynced = persons.size,
+                personsSynced = validPersons.size,
                 message = "บันทึกครัวเรือนเลขที่ ${household.houseNo} ไปยัง Firestore เรียบร้อย"
             )
             Result.success(result)
@@ -243,6 +267,15 @@ class RoomFirestoreSyncHelper(
     ): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
             val firestore = getFirestore()
+            
+            // Check if person has been tombstoned
+            val pTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES)
+                .document("person_${person.personUuid}")
+                .get().await()
+            if (pTombstoneRef.exists()) {
+                return@withContext Result.failure(IllegalStateException("Cannot sync: Person ${person.personUuid} was deleted on Cloud."))
+            }
+            
             val pRef = firestore.collection(COLLECTION_PERSONS).document(person.personUuid)
             pRef.set(personToMap(person, householdUuid, householdHouseNo), SetOptions.merge()).await()
 
@@ -283,36 +316,35 @@ class RoomFirestoreSyncHelper(
             }
 
             val timestamp = System.currentTimeMillis()
-            val tombstoneOps = mutableListOf<(com.google.firebase.firestore.WriteBatch) -> Unit>()
-            val deleteOps = mutableListOf<(com.google.firebase.firestore.WriteBatch) -> Unit>()
+            val entityOpsPairs = mutableListOf<List<(com.google.firebase.firestore.WriteBatch) -> Unit>>()
             
-            // Tombstone for household
-            val hTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("household_$householdUuid")
-            tombstoneOps.add { b -> b.set(hTombstoneRef, mapOf("uuid" to householdUuid, "type" to "household", "deletedAt" to timestamp)) }
-            
-            // Tombstones for persons
-            for (pUuid in personUuids) {
+            // 1. Group persons' tombstones and deletes together
+            for (i in personUuids.indices) {
+                val pUuid = personUuids[i]
+                val pRef = personDocRefs[i]
                 val pTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("person_$pUuid")
-                tombstoneOps.add { b -> b.set(pTombstoneRef, mapOf("uuid" to pUuid, "type" to "person", "deletedAt" to timestamp)) }
+                
+                entityOpsPairs.add(listOf(
+                    { b -> b.set(pTombstoneRef, mapOf("uuid" to pUuid, "type" to "person", "deletedAt" to timestamp)) },
+                    { b -> b.delete(pRef) }
+                ))
             }
-
-            // Delete household document
-            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid)
-            deleteOps.add { b -> b.delete(hRef) }
-
-            // Delete all person documents
-            for (pRef in personDocRefs) {
-                deleteOps.add { b -> b.delete(pRef) }
-            }
-
-            // Execute tombstones first, then deletes (so if halfway failure, they are at least tombstoned)
-            val allOps = tombstoneOps + deleteOps
             
-            // Chunk at 400 to stay safely below 500 limit
-            for (chunk in allOps.chunked(400)) {
+            // 2. Household tombstone and delete LAST
+            val hTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("household_$householdUuid")
+            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid)
+            
+            entityOpsPairs.add(listOf(
+                { b -> b.set(hTombstoneRef, mapOf("uuid" to householdUuid, "type" to "household", "deletedAt" to timestamp)) },
+                { b -> b.delete(hRef) }
+            ))
+            
+            // Chunk entity pairs at 200 pairs (400 ops) to stay safely below 500 limit
+            for (chunk in entityOpsPairs.chunked(200)) {
                 val batch = firestore.batch()
-                for (op in chunk) {
-                    op(batch)
+                for (pair in chunk) {
+                    pair[0](batch) // tombstone
+                    pair[1](batch) // delete
                 }
                 batch.commit().await()
             }
