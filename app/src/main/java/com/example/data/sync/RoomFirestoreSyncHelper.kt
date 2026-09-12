@@ -121,8 +121,9 @@ class RoomFirestoreSyncHelper(
     // =========================================================================
 
     /**
-     * Uploads all local Room households and registered citizens to Cloud Firestore.
-     * Uses batch writes for high efficiency and atomic updates.
+     * Uploads all local Room households and registered citizens to Cloud Firestore,
+     * skipping any records that have deletion tombstones.
+     * Uses batch writes for high efficiency and atomic updates, respecting Firestore batch limits (max 500).
      */
     suspend fun syncRoomToFirestore(): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
@@ -134,14 +135,18 @@ class RoomFirestoreSyncHelper(
                 return@withContext Result.failure(err)
             }
 
-            val households = repository.getAllHouseholds()
-            val persons = repository.getAllPersonsList()
+            // Fetch tombstones to prevent re-uploading deleted records
+            val tombstoneDocs = firestore.collection(COLLECTION_TOMBSTONES).get().await()
+            val deletedUuids = tombstoneDocs.documents.mapNotNull { it.getString("uuid") }.toSet()
+
+            val households = repository.getAllHouseholds().filter { !deletedUuids.contains(it.householdUuid) }
+            val persons = repository.getAllPersonsList().filter { !deletedUuids.contains(it.personUuid) }
 
             _syncState.value = SyncState.Syncing("กำลังส่งข้อมูล ${households.size} ครัวเรือน และ ${persons.size} คน ไปยัง Firestore...")
 
             val householdMap = households.associateBy { it.id }
 
-            // Write households in batches (Firestore max 500 per batch)
+            // Write households and persons in batches (Firestore max 500 per batch, we use 400 safely)
             var batch = firestore.batch()
             var opsInBatch = 0
             var householdsSynced = 0
@@ -154,7 +159,7 @@ class RoomFirestoreSyncHelper(
                 opsInBatch++
                 householdsSynced++
 
-                if (opsInBatch >= 450) {
+                if (opsInBatch >= 400) {
                     batch.commit().await()
                     batch = firestore.batch()
                     opsInBatch = 0
@@ -162,14 +167,14 @@ class RoomFirestoreSyncHelper(
             }
 
             for (p in persons) {
-                val parentHousehold = householdMap[p.householdId]
+                val parentHousehold = householdMap[p.householdId] ?: continue
                 val docRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
-                val data = personToMap(p, parentHousehold?.householdUuid ?: "", parentHousehold?.houseNo ?: "")
+                val data = personToMap(p, parentHousehold.householdUuid, parentHousehold.houseNo)
                 batch.set(docRef, data, SetOptions.merge())
                 opsInBatch++
                 personsSynced++
 
-                if (opsInBatch >= 450) {
+                if (opsInBatch >= 400) {
                     batch.commit().await()
                     batch = firestore.batch()
                     opsInBatch = 0
@@ -307,12 +312,20 @@ class RoomFirestoreSyncHelper(
     }
 
     /**
-     * Deletes a person from Firestore by UUID.
+     * Deletes a person from Firestore by UUID and writes a tombstone atomically.
      */
     suspend fun deletePersonFromFirestore(personUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val firestore = getFirestore()
-            firestore.collection(COLLECTION_PERSONS).document(personUuid).delete().await()
+            val batch = firestore.batch()
+
+            val pRef = firestore.collection(COLLECTION_PERSONS).document(personUuid)
+            batch.delete(pRef)
+
+            val pTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("person_$personUuid")
+            batch.set(pTombstoneRef, mapOf("uuid" to personUuid, "type" to "person", "deletedAt" to System.currentTimeMillis()))
+
+            batch.commit().await()
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete person $personUuid from Firestore", e)
