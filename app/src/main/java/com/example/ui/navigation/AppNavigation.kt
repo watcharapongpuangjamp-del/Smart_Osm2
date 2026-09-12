@@ -16,6 +16,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.DiagnosticScreen
+import com.example.ui.DiagnosticViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -36,6 +39,8 @@ sealed class BottomNavItem(val route: String, val title: String, val icon: Image
 fun AppNavigation(
     navController: NavHostController,
     viewModel: PersonViewModel,
+    repository: com.example.data.PersonRepository,
+    firestore: com.google.firebase.firestore.FirebaseFirestore?,
     modifier: Modifier = Modifier
 ) {
     val items = listOf(
@@ -163,7 +168,18 @@ fun AppNavigation(
             composable(BottomNavItem.Info.route) {
                 DeveloperInfoScreen(
                     onNavigateToCloudSync = { navController.navigate("cloud_sync") },
-                    onNavigateToHealthKnowledge = { navController.navigate("health_knowledge") }
+                    onNavigateToHealthKnowledge = { navController.navigate("health_knowledge") },
+                    onNavigateToDiagnostic = { navController.navigate("diagnostic") }
+                )
+            }
+            composable("diagnostic") {
+                DiagnosticScreen(
+                    viewModel = viewModel(factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                        @Suppress("UNCHECKED_CAST")
+                        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                            return DiagnosticViewModel(repository, firestore) as T
+                        }
+                    })
                 )
             }
             composable("cloud_sync") {

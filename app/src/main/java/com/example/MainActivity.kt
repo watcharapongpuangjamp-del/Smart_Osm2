@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import androidx.navigation.compose.rememberNavController
+import com.google.firebase.firestore.FirebaseFirestore
 import com.example.data.AppDatabase
 import com.example.data.PersonRepository
 import com.example.ui.navigation.AppNavigation
@@ -44,6 +45,13 @@ class MainActivity : ComponentActivity() {
                     @Suppress("UNCHECKED_CAST")
                     return PersonViewModel(repository, excelImportUseCase, syncHelper) as T
                 }
+                if (modelClass.isAssignableFrom(com.example.ui.DiagnosticViewModel::class.java)) {
+                    @Suppress("UNCHECKED_CAST")
+                    return com.example.ui.DiagnosticViewModel(
+                        repository,
+                        try { FirebaseFirestore.getInstance() } catch (e: Exception) { null }
+                    ) as T
+                }
                 throw IllegalArgumentException("Unknown ViewModel class")
             }
         }
@@ -56,6 +64,8 @@ class MainActivity : ComponentActivity() {
                     AppNavigation(
                         navController = navController,
                         viewModel = viewModel,
+                        repository = repository,
+                        firestore = try { FirebaseFirestore.getInstance() } catch (e: Exception) { null },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
