@@ -46,7 +46,7 @@ class PersonViewModel(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                if (repository.getAllHouseholds().isEmpty()) {
+                if (com.example.BuildConfig.DEBUG && repository.getAllHouseholds().isEmpty()) {
                     seedBaselineData()
                 }
             } catch (e: Exception) {
