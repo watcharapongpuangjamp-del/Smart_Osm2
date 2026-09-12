@@ -49,6 +49,7 @@ fun HouseDetailScreen(
     val householdWithPersons by viewModel.getHouseholdWithPersonsById(householdId).collectAsStateWithLifecycle(initialValue = null)
     
     var personToDelete by remember { mutableStateOf<Person?>(null) }
+    var showDeleteHouseholdDialog by remember { mutableStateOf(false) }
 
     if (personToDelete != null) {
         AlertDialog(
@@ -66,6 +67,29 @@ fun HouseDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { personToDelete = null }) { Text("ยกเลิก") }
+            }
+        )
+    }
+
+    if (showDeleteHouseholdDialog && householdWithPersons != null) {
+        val house = householdWithPersons!!.household
+        val membersCount = householdWithPersons!!.persons.size
+        AlertDialog(
+            onDismissRequest = { showDeleteHouseholdDialog = false },
+            title = { Text("ยืนยันการลบบ้านเลขที่ ${house.houseNo}") },
+            text = { Text("การลบบ้านหลังนี้จะลบข้อมูลสมาชิกในบ้านทั้งหมด ($membersCount คน) ตามระบบ CASCADE อย่างถาวร แน่ใจหรือไม่?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteHousehold(house)
+                        showDeleteHouseholdDialog = false
+                        onNavigateBack()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("ลบบ้านและสมาชิก") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteHouseholdDialog = false }) { Text("ยกเลิก") }
             }
         )
     }
@@ -88,6 +112,9 @@ fun HouseDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showDeleteHouseholdDialog = true }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "ลบบ้าน", tint = Color.White)
+                    }
                     ThemeQuickToggleButton(iconTint = Color.White)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
