@@ -36,7 +36,7 @@ class LastModifiedRegressionTest {
     private lateinit var viewModel: PersonViewModel
     private lateinit var context: Context
 
-    private val testDispatcher = StandardTestDispatcher()
+    private val testDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher()
 
     @Before
     fun setup() {
