@@ -65,7 +65,7 @@ sealed interface SyncState {
  * Provides bidirectional and push/pull synchronization between the local Room database
  * and Cloud Firestore collections ("households" and "persons") with UUID mapping for idempotent writes.
  */
-class RoomFirestoreSyncHelper(
+open class RoomFirestoreSyncHelper(
     private val context: Context,
     private val repository: PersonRepository,
     private val firestoreProvider: () -> FirebaseFirestore? = {
@@ -257,6 +257,19 @@ class RoomFirestoreSyncHelper(
         }
     }
 
+    @androidx.annotation.VisibleForTesting
+    internal open suspend fun checkTombstoneExists(uuid: String, type: String): Boolean {
+        return getFirestore().collection(COLLECTION_TOMBSTONES)
+            .document("${type}_${uuid}")
+            .get().await().exists()
+    }
+
+    @androidx.annotation.VisibleForTesting
+    internal open suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
+        val pRef = getFirestore().collection(COLLECTION_PERSONS).document(person.personUuid)
+        pRef.set(personToMap(person, householdUuid, householdHouseNo), SetOptions.merge()).await()
+    }
+
     /**
      * Persists a single citizen record to Cloud Firestore.
      */
@@ -266,18 +279,17 @@ class RoomFirestoreSyncHelper(
         householdHouseNo: String = ""
     ): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
-            val firestore = getFirestore()
-            
             // Check if person has been tombstoned
-            val pTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES)
-                .document("person_${person.personUuid}")
-                .get().await()
-            if (pTombstoneRef.exists()) {
+            if (checkTombstoneExists(person.personUuid, "person")) {
                 return@withContext Result.failure(IllegalStateException("Cannot sync: Person ${person.personUuid} was deleted on Cloud."))
             }
+
+            // Check if parent household has been tombstoned
+            if (checkTombstoneExists(householdUuid, "household")) {
+                return@withContext Result.failure(IllegalStateException("Cannot sync: Parent Household $householdUuid was deleted on Cloud."))
+            }
             
-            val pRef = firestore.collection(COLLECTION_PERSONS).document(person.personUuid)
-            pRef.set(personToMap(person, householdUuid, householdHouseNo), SetOptions.merge()).await()
+            performPersonSave(person, householdUuid, householdHouseNo)
 
             val result = SyncResult(
                 householdsSynced = 0,
