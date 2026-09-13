@@ -91,7 +91,7 @@ open class RoomFirestoreSyncHelper(
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
 
-    fun isFirebaseConfigured(): Boolean {
+    open fun isFirebaseConfigured(): Boolean {
         return try {
             firestoreProvider() != null
         } catch (e: Exception) {
@@ -373,7 +373,7 @@ open class RoomFirestoreSyncHelper(
     /**
      * Deletes a person from Firestore by UUID and writes a tombstone atomically.
      */
-    suspend fun deletePersonFromFirestore(personUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
+    open suspend fun deletePersonFromFirestore(personUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val firestore = getFirestore()
             val batch = firestore.batch()

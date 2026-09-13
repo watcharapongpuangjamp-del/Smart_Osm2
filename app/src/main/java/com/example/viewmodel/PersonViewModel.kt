@@ -334,20 +334,24 @@ class PersonViewModel(
     fun delete(person: Person, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                repository.delete(person)
-                
+                // 1. Delete from Firestore FIRST
+                // This ensures Cloud tombstones are written BEFORE local Room deletion.
+                // Prevents resurrection if app crashes between local delete and Cloud sync.
                 val helper = syncHelper
                 if (helper != null && helper.isFirebaseConfigured()) {
                     val cloudResult = helper.deletePersonFromFirestore(person.personUuid)
                     if (cloudResult.isFailure) {
                         val cloudEx = cloudResult.exceptionOrNull()
                         withContext(Dispatchers.Main) {
-                            onResult(false, "ลบข้อมูลในเครื่องสำเร็จ แต่ลบ Cloud ไม่สำเร็จ: ${cloudEx?.message}")
+                            onResult(false, "ลบข้อมูล Cloud ไม่สำเร็จ (ป้องกันการสูญหายหรือคืนชีพ): ${cloudEx?.message}")
                         }
                         return@launch
                     }
                 }
 
+                // 2. Delete locally
+                repository.delete(person)
+                
                 withContext(Dispatchers.Main) {
                     onResult(true, null)
                 }
