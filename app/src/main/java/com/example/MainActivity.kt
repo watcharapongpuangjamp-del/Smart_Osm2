@@ -33,7 +33,9 @@ class MainActivity : ComponentActivity() {
             AppDatabase.MIGRATION_2_3,
             AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6
+            AppDatabase.MIGRATION_5_6,
+            AppDatabase.MIGRATION_6_7,
+            AppDatabase.MIGRATION_7_8
         ).build()
         val repository = PersonRepository(db, db.personDao(), db.householdDao(), db.personHistoryDao())
         val excelImportUseCase = com.example.domain.ExcelImportUseCase(db)

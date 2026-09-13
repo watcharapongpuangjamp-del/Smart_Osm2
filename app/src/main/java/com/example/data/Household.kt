@@ -24,5 +24,6 @@ data class Household(
     val locationAccuracy: Float? = null,
     val locationCapturedAt: Long? = null,
     val locationProvider: String? = null,
-    val dataStatus: DataStatus = DataStatus.NEEDS_REVIEW
+    val dataStatus: DataStatus = DataStatus.NEEDS_REVIEW,
+    val lastModified: Long = System.currentTimeMillis()
 )

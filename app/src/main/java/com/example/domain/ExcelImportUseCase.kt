@@ -310,9 +310,10 @@ class ExcelImportUseCase(
                         if (existingH != null) {
                             householdId = existingH.id
                         } else {
-                            val newHId = householdDao.insert(item.householdData)
+                            val householdToInsert = item.householdData.copy(lastModified = System.currentTimeMillis())
+                            val newHId = householdDao.insert(householdToInsert)
                             householdId = newHId
-                            existingHouseholds[item.householdData.householdUuid] = item.householdData.copy(id = newHId)
+                            existingHouseholds[item.householdData.householdUuid] = householdToInsert.copy(id = newHId)
                         }
                     }
 
@@ -331,7 +332,8 @@ class ExcelImportUseCase(
                             isBirthYearOnly = personToSave.isBirthYearOnly,
                             houseStatus = personToSave.houseStatus,
                             personStatus = personToSave.personStatus,
-                            dataStatus = personToSave.dataStatus
+                            dataStatus = personToSave.dataStatus,
+                            lastModified = System.currentTimeMillis()
                         )
                         personDao.updatePerson(updated)
                         historyDao.insert(
@@ -349,8 +351,9 @@ class ExcelImportUseCase(
                         )
                         successCount++
                     } else {
-                        val newId = personDao.insertPerson(personToSave)
-                        val insertedPerson = personToSave.copy(id = newId)
+                        val personToInsert = personToSave.copy(lastModified = System.currentTimeMillis())
+                        val newId = personDao.insertPerson(personToInsert)
+                        val insertedPerson = personToInsert.copy(id = newId)
                         existingPersonsByUuid[insertedPerson.personUuid] = insertedPerson
                         if (insertedPerson.nationalId != null) {
                             existingPersonsByNatId[insertedPerson.nationalId] = insertedPerson

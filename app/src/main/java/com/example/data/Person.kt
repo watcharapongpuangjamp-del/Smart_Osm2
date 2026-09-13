@@ -34,5 +34,6 @@ data class Person(
     val isBirthYearOnly: Boolean = false,
     val houseStatus: HouseholdRole = HouseholdRole.RESIDENT,
     val personStatus: PersonStatus = PersonStatus.ALIVE,
-    val dataStatus: DataStatus = DataStatus.NEEDS_REVIEW
+    val dataStatus: DataStatus = DataStatus.NEEDS_REVIEW,
+    val lastModified: Long = System.currentTimeMillis()
 )

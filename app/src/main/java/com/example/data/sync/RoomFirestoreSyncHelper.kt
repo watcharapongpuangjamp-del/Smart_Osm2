@@ -531,7 +531,7 @@ open class RoomFirestoreSyncHelper(
             "locationCapturedAt" to household.locationCapturedAt,
             "locationProvider" to household.locationProvider,
             "dataStatus" to household.dataStatus.name,
-            "updatedAt" to System.currentTimeMillis()
+            "updatedAt" to household.lastModified
         )
     }
 
@@ -548,7 +548,7 @@ open class RoomFirestoreSyncHelper(
             "houseStatus" to person.houseStatus.name,
             "personStatus" to person.personStatus.name,
             "dataStatus" to person.dataStatus.name,
-            "updatedAt" to System.currentTimeMillis()
+            "updatedAt" to person.lastModified
         )
     }
 
@@ -567,6 +567,8 @@ open class RoomFirestoreSyncHelper(
             try { DataStatus.valueOf(it) } catch (e: Exception) { DataStatus.NEEDS_REVIEW }
         } ?: DataStatus.NEEDS_REVIEW
 
+        val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+
         return Household(
             id = 0,
             householdUuid = uuid,
@@ -580,7 +582,8 @@ open class RoomFirestoreSyncHelper(
             locationAccuracy = accuracy,
             locationCapturedAt = capturedAt,
             locationProvider = provider,
-            dataStatus = dataStatus
+            dataStatus = dataStatus,
+            lastModified = updatedAt
         )
     }
 
@@ -615,6 +618,8 @@ open class RoomFirestoreSyncHelper(
             try { DataStatus.valueOf(it) } catch (e: Exception) { DataStatus.NEEDS_REVIEW }
         } ?: DataStatus.NEEDS_REVIEW
 
+        val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+
         return Person(
             id = 0,
             personUuid = uuid,
@@ -626,7 +631,8 @@ open class RoomFirestoreSyncHelper(
             isBirthYearOnly = isBirthYearOnly,
             houseStatus = houseStatus,
             personStatus = personStatus,
-            dataStatus = dataStatus
+            dataStatus = dataStatus,
+            lastModified = updatedAt
         )
     }
 }

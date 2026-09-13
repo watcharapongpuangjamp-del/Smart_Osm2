@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Person::class, Household::class, PersonHistory::class], version = 7, exportSchema = true)
+@Database(entities = [Person::class, Household::class, PersonHistory::class], version = 8, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun personDao(): PersonDao
@@ -95,6 +95,14 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_persons_nationalId` ON `persons` (`nationalId`)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_persons_personUuid` ON `persons` (`personUuid`)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_households_householdUuid` ON `households` (`householdUuid`)")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val currentTime = System.currentTimeMillis()
+                db.execSQL("ALTER TABLE persons ADD COLUMN lastModified INTEGER NOT NULL DEFAULT $currentTime")
+                db.execSQL("ALTER TABLE households ADD COLUMN lastModified INTEGER NOT NULL DEFAULT $currentTime")
             }
         }
     }

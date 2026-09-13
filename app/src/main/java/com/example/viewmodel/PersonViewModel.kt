@@ -277,13 +277,15 @@ class PersonViewModel(
 
     fun insertHousehold(household: Household, onComplete: (Long) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            val id = repository.insertHousehold(household)
+            val id = repository.insertHousehold(household.copy(lastModified = System.currentTimeMillis()))
             withContext(Dispatchers.Main) {
                 onComplete(id)
             }
         }
     }
-    fun updateHousehold(household: Household) = viewModelScope.launch { repository.updateHousehold(household) }
+    fun updateHousehold(household: Household) = viewModelScope.launch { 
+        repository.updateHousehold(household.copy(lastModified = System.currentTimeMillis())) 
+    }
     fun deleteHousehold(household: Household, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -329,8 +331,12 @@ class PersonViewModel(
     suspend fun getHouseholdById(id: Long): Household? = repository.getHouseholdById(id)
     fun getHouseholdWithPersonsById(id: Long) = repository.getHouseholdWithPersonsById(id)
 
-    fun insert(person: Person) = viewModelScope.launch { repository.insert(person) }
-    fun update(person: Person) = viewModelScope.launch { repository.update(person) }
+    fun insert(person: Person) = viewModelScope.launch { 
+        repository.insert(person.copy(lastModified = System.currentTimeMillis())) 
+    }
+    fun update(person: Person) = viewModelScope.launch { 
+        repository.update(person.copy(lastModified = System.currentTimeMillis())) 
+    }
     fun delete(person: Person, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
