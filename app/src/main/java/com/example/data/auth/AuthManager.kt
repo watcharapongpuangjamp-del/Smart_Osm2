@@ -50,16 +50,24 @@ open class AuthManager(
     private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
 
+    private val _userProfile = MutableStateFlow<UserProfile?>(null)
+    open val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
+
     val currentUid: String?
         get() = _currentUser.value?.uid
+
+    private fun updateUser(user: FirebaseUser?) {
+        _currentUser.value = user
+        _userProfile.value = user?.let { UserProfile.fromFirebaseUser(it) }
+    }
 
     init {
         try {
             val auth = firebaseAuth
             if (auth != null) {
-                _currentUser.value = auth.currentUser
+                updateUser(auth.currentUser)
                 auth.addAuthStateListener { updatedAuth ->
-                    _currentUser.value = updatedAuth.currentUser
+                    updateUser(updatedAuth.currentUser)
                 }
             }
         } catch (e: Exception) {
@@ -132,7 +140,7 @@ open class AuthManager(
                 val user = authResult.user
                     ?: throw IllegalStateException("Firebase Authentication ไม่สามารถสร้างหรือคืนค่า User ได้")
 
-                _currentUser.value = user
+                updateUser(user)
                 Log.i(TAG, "Google Sign-In successful. User UID: ${user.uid}")
                 Result.success(user)
             } else {
@@ -160,7 +168,7 @@ open class AuthManager(
             )
             val result = auth.signInWithEmailAndPassword(email.trim(), pass).await()
             val user = result.user ?: throw IllegalStateException("User is null after sign in")
-            _currentUser.value = user
+            updateUser(user)
             Log.i(TAG, "Email Sign-In successful. User UID: ${user.uid}")
             Result.success(user)
         } catch (e: Exception) {
@@ -179,7 +187,7 @@ open class AuthManager(
             )
             val result = auth.createUserWithEmailAndPassword(email.trim(), pass).await()
             val user = result.user ?: throw IllegalStateException("User is null after registration")
-            _currentUser.value = user
+            updateUser(user)
             Log.i(TAG, "Email Registration successful. User UID: ${user.uid}")
             Result.success(user)
         } catch (e: Exception) {
@@ -199,7 +207,7 @@ open class AuthManager(
             )
             val result = auth.signInAnonymously().await()
             val user = result.user ?: throw IllegalStateException("User is null after anonymous auth")
-            _currentUser.value = user
+            updateUser(user)
             Log.i(TAG, "Anonymous Sign-In successful. User UID: ${user.uid}")
             Result.success(user)
         } catch (e: Exception) {
@@ -214,7 +222,7 @@ open class AuthManager(
     open fun signOut() {
         try {
             firebaseAuth?.signOut()
-            _currentUser.value = null
+            updateUser(null)
             Log.i(TAG, "User signed out successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Error signing out", e)

@@ -55,7 +55,8 @@ fun LoginScreen(
     authViewModel: AuthViewModel,
     onLoginSuccess: () -> Unit,
     onContinueOffline: () -> Unit,
-    onNavigateBack: (() -> Unit)? = null
+    onNavigateBack: (() -> Unit)? = null,
+    onNavigateToProfile: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -371,6 +372,21 @@ fun LoginScreen(
                             Icon(Icons.Filled.ArrowForward, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("เข้าสู่ระบบสำรวจ", fontWeight = FontWeight.Bold)
+                        }
+
+                        if (onNavigateToProfile != null) {
+                            OutlinedButton(
+                                onClick = onNavigateToProfile,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("btn_login_view_profile"),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.Filled.Person, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("ดูข้อมูลโปรไฟล์ผู้ใช้งาน (View Profile)")
+                            }
                         }
 
                         OutlinedButton(

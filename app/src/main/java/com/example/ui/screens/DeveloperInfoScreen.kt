@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.LocalLibrary
 import androidx.compose.material.icons.filled.PhoneInTalk
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Verified
@@ -52,7 +53,8 @@ fun DeveloperInfoScreen(
     onNavigateToCloudSync: () -> Unit = {},
     onNavigateToHealthKnowledge: () -> Unit = {},
     onNavigateToDiagnostic: () -> Unit = {},
-    onNavigateToLogin: () -> Unit = {}
+    onNavigateToLogin: () -> Unit = {},
+    onNavigateToUserProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
@@ -177,7 +179,56 @@ fun DeveloperInfoScreen(
             // Theme Settings Card (Light / Dark / System mode switch)
             ThemeSettingsCard()
 
-            // User Authentication / Identity Card
+            // User Profile Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onNavigateToUserProfile)
+                    .shadow(4.dp, RoundedCornerShape(22.dp), spotColor = CardShadowTint),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF0F766E)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.AccountCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
+                        }
+                        Column {
+                            Text(
+                                text = "ข้อมูลโปรไฟล์ผู้ใช้งาน (User Profile)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "ดูรายละเอียดบัญชี, Firebase UID, อีเมล และสถานะยืนยันตัวตน",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                    Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+
+            // User Authentication / Login Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -206,11 +257,11 @@ fun DeveloperInfoScreen(
                                 .background(Color(0xFF0D9488)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.AccountCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
+                            Icon(Icons.Filled.Security, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
                         }
                         Column {
                             Text(
-                                text = "ระบบยืนยันตัวตน (Authentication)",
+                                text = "เข้าสู่ระบบ / ยืนยันตัวตน (Authentication)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer

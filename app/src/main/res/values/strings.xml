@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">ทะเบียนประชากร</string>
+    <string name="user_profile_title">ข้อมูลโปรไฟล์ผู้ใช้งาน</string>
+    <string name="user_identity_label">User Identity (Firebase Auth)</string>
 </resources>

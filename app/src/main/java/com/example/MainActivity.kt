@@ -16,6 +16,8 @@ import androidx.navigation.compose.rememberNavController
 import com.google.firebase.firestore.FirebaseFirestore
 import com.example.data.AppDatabase
 import com.example.data.PersonRepository
+import com.example.data.firestore.FirestoreManager
+import com.example.data.firestore.FirestorePopulationRepository
 import com.example.ui.navigation.AppNavigation
 import com.example.ui.theme.AppThemeProvider
 import com.example.viewmodel.PersonViewModel
@@ -24,6 +26,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Initialize Firestore with offline cache and retry settings
+        val firestore = FirestoreManager.initialize(applicationContext)
+        val firestorePopulationRepository = FirestorePopulationRepository(
+            firestoreProvider = { FirestoreManager.getInstance() }
+        )
         
         val db = Room.databaseBuilder(
             applicationContext,
@@ -39,7 +47,11 @@ class MainActivity : ComponentActivity() {
         ).build()
         val repository = PersonRepository(db, db.personDao(), db.householdDao(), db.personHistoryDao())
         val excelImportUseCase = com.example.domain.ExcelImportUseCase(db)
-        val syncHelper = com.example.data.sync.RoomFirestoreSyncHelper(applicationContext, repository)
+        val syncHelper = com.example.data.sync.RoomFirestoreSyncHelper(
+            applicationContext,
+            repository,
+            firestoreProvider = { FirestoreManager.getInstance() }
+        )
 
         val factory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -51,7 +63,7 @@ class MainActivity : ComponentActivity() {
                     @Suppress("UNCHECKED_CAST")
                     return com.example.ui.DiagnosticViewModel(
                         repository,
-                        try { FirebaseFirestore.getInstance() } catch (e: Exception) { null }
+                        FirestoreManager.getInstance()
                     ) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
@@ -67,7 +79,7 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         viewModel = viewModel,
                         repository = repository,
-                        firestore = try { FirebaseFirestore.getInstance() } catch (e: Exception) { null },
+                        firestore = FirestoreManager.getInstance(),
                         modifier = Modifier.padding(innerPadding)
                     )
                 }

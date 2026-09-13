@@ -130,6 +130,9 @@ fun AppNavigation(
                         } else {
                             navController.navigate("pin_lock")
                         }
+                    },
+                    onNavigateToProfile = {
+                        navController.navigate("user_profile")
                     }
                 )
             }
@@ -194,6 +197,14 @@ fun AppNavigation(
                     onNavigateToCloudSync = { navController.navigate("cloud_sync") },
                     onNavigateToHealthKnowledge = { navController.navigate("health_knowledge") },
                     onNavigateToDiagnostic = { navController.navigate("diagnostic") },
+                    onNavigateToLogin = { navController.navigate("login") },
+                    onNavigateToUserProfile = { navController.navigate("user_profile") }
+                )
+            }
+            composable("user_profile") {
+                UserProfileScreen(
+                    authViewModel = authViewModel,
+                    onNavigateBack = { navController.popBackStack() },
                     onNavigateToLogin = { navController.navigate("login") }
                 )
             }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.auth.AuthManager
+import com.example.data.auth.UserProfile
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +29,7 @@ class AuthViewModel(
 ) : ViewModel() {
 
     val currentUser: StateFlow<FirebaseUser?> = authManager.currentUser
+    val userProfile: StateFlow<UserProfile?> = authManager.userProfile
 
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
