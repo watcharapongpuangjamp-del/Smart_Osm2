@@ -1,1 +1,71 @@
+name: Build APK
 
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Build variant to assemble (debug or release)"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle (with caching)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # ---- Secrets required by the AI Studio template ----
+      # This project reads GEMINI_API_KEY / MAPS_API_KEY from a .env file
+      # (see .env.example). Add these as repo Secrets:
+      # Settings > Secrets and variables > Actions > New repository secret
+      - name: Create .env file
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "MAPS_API_KEY=${{ secrets.MAPS_API_KEY }}" >> .env
+
+      # google.services plugin is declared in build.gradle.kts.
+      # If the app module actually applies it and needs google-services.json,
+      # add the file's full JSON content as a secret named GOOGLE_SERVICES_JSON.
+      # If your app doesn't use Firebase/Google services, you can delete this step.
+      - name: Create google-services.json (optional)
+        if: ${{ env.GOOGLE_SERVICES_JSON != '' }}
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
+
+      - name: Build Debug APK
+        if: ${{ github.event.inputs.build_type != 'release' }}
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release APK
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-apk
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
