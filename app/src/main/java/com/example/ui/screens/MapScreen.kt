@@ -240,6 +240,7 @@ fun MapScreen(
                                     val locationRequest = com.google.android.gms.location.CurrentLocationRequest.Builder()
                                         .setPriority(com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY)
                                         .build()
+                                    @SuppressLint("MissingPermission")
                                     val location = fusedLocationClient.getCurrentLocation(locationRequest, null).await()
                                     if (location != null) {
                                         val geoPoint = GeoPoint(location.latitude, location.longitude)
