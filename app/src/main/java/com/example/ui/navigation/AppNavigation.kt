@@ -41,6 +41,7 @@ fun AppNavigation(
     viewModel: PersonViewModel,
     repository: com.example.data.PersonRepository,
     firestore: com.google.firebase.firestore.FirebaseFirestore?,
+    authViewModel: com.example.viewmodel.AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     modifier: Modifier = Modifier
 ) {
     val items = listOf(
@@ -103,8 +104,31 @@ fun AppNavigation(
             composable("splash") {
                 SplashScreen(
                     onStartApp = {
-                        navController.navigate("pin_lock") {
+                        navController.navigate("login") {
                             popUpTo("splash") { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            composable("login") {
+                LoginScreen(
+                    authViewModel = authViewModel,
+                    onLoginSuccess = {
+                        navController.navigate("pin_lock") {
+                            popUpTo("login") { inclusive = true }
+                        }
+                    },
+                    onContinueOffline = {
+                        navController.navigate("pin_lock") {
+                            popUpTo("login") { inclusive = true }
+                        }
+                    },
+                    onNavigateBack = {
+                        if (navController.previousBackStackEntry != null) {
+                            navController.popBackStack()
+                        } else {
+                            navController.navigate("pin_lock")
                         }
                     }
                 )
@@ -169,7 +193,8 @@ fun AppNavigation(
                 DeveloperInfoScreen(
                     onNavigateToCloudSync = { navController.navigate("cloud_sync") },
                     onNavigateToHealthKnowledge = { navController.navigate("health_knowledge") },
-                    onNavigateToDiagnostic = { navController.navigate("diagnostic") }
+                    onNavigateToDiagnostic = { navController.navigate("diagnostic") },
+                    onNavigateToLogin = { navController.navigate("login") }
                 )
             }
             composable("diagnostic") {
