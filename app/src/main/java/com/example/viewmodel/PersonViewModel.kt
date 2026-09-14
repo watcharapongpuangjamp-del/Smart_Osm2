@@ -329,7 +329,83 @@ class PersonViewModel(
     }
     
     suspend fun getHouseholdById(id: Long): Household? = repository.getHouseholdById(id)
+    suspend fun getHouseholdByNo(houseNo: String): Household? = repository.getHouseholdByNo(houseNo)
     fun getHouseholdWithPersonsById(id: Long) = repository.getHouseholdWithPersonsById(id)
+
+    suspend fun registerMember(
+        fullName: String,
+        nationalId: String?,
+        houseNo: String,
+        villageNo: String = "8",
+        subdistrict: String = "ป่าขะ",
+        district: String = "บ้านนา",
+        province: String = "นครนายก",
+        gender: Gender = Gender.MALE,
+        birthDate: LocalDate? = null,
+        isBirthYearOnly: Boolean = false,
+        houseStatus: HouseholdRole = HouseholdRole.RESIDENT,
+        personStatus: PersonStatus = PersonStatus.ALIVE,
+        dataStatus: DataStatus = DataStatus.VERIFIED
+    ): Result<Pair<Person, Household>> = withContext(Dispatchers.IO) {
+        try {
+            val cleanName = fullName.trim()
+            if (cleanName.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("กรุณาระบุชื่อ-นามสกุล"))
+            }
+
+            val cleanHouseNo = houseNo.trim()
+            if (cleanHouseNo.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("กรุณาระบุบ้านเลขที่"))
+            }
+
+            val normalizedId = nationalId?.let { ValidationUtils.normalizeNationalId(it) }?.ifBlank { null }
+            if (normalizedId != null) {
+                if (normalizedId.length != 13) {
+                    return@withContext Result.failure(IllegalArgumentException("เลขบัตรประชาชนต้องมี 13 หลัก"))
+                }
+                val existingPerson = repository.getPersonByNationalId(normalizedId)
+                if (existingPerson != null) {
+                    return@withContext Result.failure(IllegalArgumentException("เลขประจำตัวประชาชนนี้มีอยู่ในระบบแล้ว"))
+                }
+            }
+
+            // Find or create household
+            var household = repository.getHouseholdByNo(cleanHouseNo)
+            if (household == null) {
+                val newHousehold = Household(
+                    householdUuid = java.util.UUID.randomUUID().toString(),
+                    houseNo = cleanHouseNo,
+                    villageNo = villageNo.trim(),
+                    subdistrict = subdistrict.trim(),
+                    district = district.trim(),
+                    province = province.trim(),
+                    dataStatus = dataStatus,
+                    lastModified = System.currentTimeMillis()
+                )
+                val newHId = repository.insertHousehold(newHousehold)
+                household = newHousehold.copy(id = newHId)
+            }
+
+            val newPerson = Person(
+                personUuid = java.util.UUID.randomUUID().toString(),
+                householdId = household.id,
+                nationalId = normalizedId,
+                fullName = cleanName,
+                gender = gender,
+                birthDate = birthDate,
+                isBirthYearOnly = isBirthYearOnly,
+                houseStatus = houseStatus,
+                personStatus = personStatus,
+                dataStatus = dataStatus,
+                lastModified = System.currentTimeMillis()
+            )
+            repository.insert(newPerson)
+
+            Result.success(Pair(newPerson, household))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     fun insert(person: Person) = viewModelScope.launch { 
         repository.insert(person.copy(lastModified = System.currentTimeMillis())) 

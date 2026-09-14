@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -40,7 +42,8 @@ import java.time.LocalDate
 @Composable
 fun PersonListScreen(
     viewModel: PersonViewModel,
-    onPersonClick: (Long, Long) -> Unit // (personId, householdId)
+    onPersonClick: (Long, Long) -> Unit, // (personId, householdId)
+    onAddPersonClick: () -> Unit = {}
 ) {
     val allHouseholdsWithPersons by viewModel.allHouseholdsWithPersons.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
@@ -112,11 +115,33 @@ fun PersonListScreen(
                         )
                     }
                 },
+                actions = {
+                    IconButton(
+                        onClick = onAddPersonClick,
+                        modifier = Modifier.testTag("add_person_action_button")
+                    ) {
+                        Icon(
+                            Icons.Filled.PersonAdd,
+                            contentDescription = "ลงทะเบียนสมาชิกใหม่",
+                            tint = Color.White
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = EmeraldPrimary,
                     titleContentColor = Color.White,
                     actionIconContentColor = Color.White
                 )
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = onAddPersonClick,
+                icon = { Icon(Icons.Filled.PersonAdd, contentDescription = null) },
+                text = { Text("ลงทะเบียนประชากร") },
+                containerColor = EmeraldPrimary,
+                contentColor = Color.White,
+                modifier = Modifier.testTag("register_person_fab")
             )
         }
     ) { padding ->
