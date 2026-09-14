@@ -446,6 +446,7 @@ fun RegisterMemberScreen(
                         PersonStatus.ALIVE -> "มีชีวิตอยู่"
                         PersonStatus.DEAD -> "เสียชีวิตแล้ว"
                         PersonStatus.MOVED -> "ย้ายที่อยู่"
+                        PersonStatus.UNKNOWN -> "ไม่ระบุ"
                     },
                     onOptionSelected = {
                         personStatus = when (it) {

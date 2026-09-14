@@ -183,6 +183,20 @@ fun AppNavigation(
                     viewModel = viewModel,
                     onPersonClick = { personId, householdId -> 
                         navController.navigate("person_form/$personId?householdId=$householdId") 
+                    },
+                    onAddPersonClick = {
+                        navController.navigate("register_member")
+                    }
+                )
+            }
+            
+            composable("register_member") {
+                RegisterMemberScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onRegistrationSuccess = { personId, householdId ->
+                        navController.popBackStack()
+                        navController.navigate("person_form/$personId?householdId=$householdId")
                     }
                 )
             }

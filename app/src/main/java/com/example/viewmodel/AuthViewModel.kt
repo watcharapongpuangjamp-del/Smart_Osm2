@@ -50,6 +50,8 @@ class AuthViewModel(
                     val userFriendlyMsg = when {
                         error is androidx.credentials.exceptions.GetCredentialCancellationException ->
                             "ยกเลิกการเข้าสู่ระบบด้วย Google"
+                        error is androidx.credentials.exceptions.NoCredentialException ->
+                            "ไม่พบบัญชี Google ในอุปกรณ์นี้ กรุณาเพิ่มบัญชี Google ในการตั้งค่าเครื่องก่อนใช้งาน หรือใช้การล็อกอินด้วยอีเมล"
                         error.message?.contains("Web Client ID", ignoreCase = true) == true ->
                             error.message ?: "กรุณาระบุ Web Client ID"
                         else ->
