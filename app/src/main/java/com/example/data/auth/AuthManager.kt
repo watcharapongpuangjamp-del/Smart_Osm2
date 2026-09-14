@@ -44,8 +44,18 @@ open class AuthManager(
         private const val TAG = "AuthManager"
     }
 
+    private var lastAuthError: String? = null
+
     private val firebaseAuth: FirebaseAuth?
-        get() = authProvider()
+        get() {
+            return try {
+                FirebaseAuth.getInstance()
+            } catch (e: Exception) {
+                lastAuthError = e.message
+                null
+            }
+        }
+
 
     private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
@@ -89,7 +99,7 @@ open class AuthManager(
     ): Result<FirebaseUser> = withContext(Dispatchers.IO) {
         try {
             val auth = firebaseAuth ?: return@withContext Result.failure(
-                IllegalStateException("Firebase Auth ยังไม่ได้ตั้งค่าหรือพร้อมใช้งานในระบบนี้")
+                IllegalStateException("Firebase Auth is not initialized. Check logs.")
             )
 
             // Attempt to resolve default_web_client_id from resources if not explicitly provided
@@ -164,7 +174,7 @@ open class AuthManager(
     open suspend fun signInWithEmail(email: String, pass: String): Result<FirebaseUser> = withContext(Dispatchers.IO) {
         try {
             val auth = firebaseAuth ?: return@withContext Result.failure(
-                IllegalStateException("Firebase Auth ยังไม่ได้ตั้งค่าในระบบนี้")
+                IllegalStateException("Firebase Auth is not initialized. Check logs.")
             )
             val result = auth.signInWithEmailAndPassword(email.trim(), pass).await()
             val user = result.user ?: throw IllegalStateException("User is null after sign in")
@@ -183,7 +193,7 @@ open class AuthManager(
     open suspend fun signUpWithEmail(email: String, pass: String): Result<FirebaseUser> = withContext(Dispatchers.IO) {
         try {
             val auth = firebaseAuth ?: return@withContext Result.failure(
-                IllegalStateException("Firebase Auth ยังไม่ได้ตั้งค่าในระบบนี้")
+                IllegalStateException("Firebase Auth is not initialized. Check logs.")
             )
             val result = auth.createUserWithEmailAndPassword(email.trim(), pass).await()
             val user = result.user ?: throw IllegalStateException("User is null after registration")
@@ -203,7 +213,7 @@ open class AuthManager(
     open suspend fun signInAnonymously(): Result<FirebaseUser> = withContext(Dispatchers.IO) {
         try {
             val auth = firebaseAuth ?: return@withContext Result.failure(
-                IllegalStateException("Firebase Auth ยังไม่ได้ตั้งค่าในระบบนี้")
+                IllegalStateException("Firebase Auth is not initialized. Check logs.")
             )
             val result = auth.signInAnonymously().await()
             val user = result.user ?: throw IllegalStateException("User is null after anonymous auth")
