@@ -71,6 +71,8 @@ open class RoomFirestoreSyncHelper(
     private val firestoreProvider: () -> FirebaseFirestore? = {
         try {
             if (FirebaseApp.getApps(context).isNotEmpty()) {
+
+
                 FirebaseFirestore.getInstance()
             } else {
                 null
@@ -81,7 +83,21 @@ open class RoomFirestoreSyncHelper(
         }
     }
 ) {
-    companion object {
+    companion object
+    private val pendingDeletionsPrefs by lazy { context.getSharedPreferences("sync_pending_deletions", Context.MODE_PRIVATE) }
+
+    fun queueDeletion(uuid: String, type: String) {
+        pendingDeletionsPrefs.edit().putString(uuid, type).apply()
+    }
+
+    fun removeDeletionQueue(uuid: String) {
+        pendingDeletionsPrefs.edit().remove(uuid).apply()
+    }
+
+    private fun getQueuedDeletions(): Map<String, String> {
+        return pendingDeletionsPrefs.all.mapValues { it.value.toString() }
+    }
+ {
         private const val TAG = "RoomFirestoreSyncHelper"
         const val COLLECTION_HOUSEHOLDS = "households"
         const val COLLECTION_PERSONS = "persons"
@@ -133,6 +149,16 @@ open class RoomFirestoreSyncHelper(
                 val err = IllegalStateException("ระบบ Cloud (Firebase) ยังไม่ได้เชื่อมต่อในระบบนี้ (ใช้งานฐานข้อมูลภายใน Room ได้ปกติ)")
                 _syncState.value = SyncState.Error(err.message ?: "", err)
                 return@withContext Result.failure(err)
+            }
+
+            // Process pending deletions first
+            val pendingDeletes = getQueuedDeletions()
+            for ((uuid, type) in pendingDeletes) {
+                if (type == "household") {
+                    deleteHouseholdFromFirestore(uuid)
+                } else if (type == "person") {
+                    deletePersonFromFirestore(uuid)
+                }
             }
 
             // Fetch tombstones to prevent re-uploading deleted records
@@ -363,6 +389,7 @@ open class RoomFirestoreSyncHelper(
                 batch.commit().await()
             }
 
+            removeDeletionQueue(householdUuid)
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete household $householdUuid from Firestore", e)
@@ -385,6 +412,7 @@ open class RoomFirestoreSyncHelper(
             batch.set(pTombstoneRef, mapOf("uuid" to personUuid, "type" to "person", "deletedAt" to System.currentTimeMillis()))
 
             batch.commit().await()
+            removeDeletionQueue(personUuid)
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete person $personUuid from Firestore", e)
@@ -413,6 +441,8 @@ open class RoomFirestoreSyncHelper(
             // Fetch tombstones
             val tombstoneDocs = firestore.collection(COLLECTION_TOMBSTONES).get().await()
             val deletedUuids = tombstoneDocs.documents.mapNotNull { it.getString("uuid") }.toSet()
+            val pendingDeletes = getQueuedDeletions()
+            val allDeletedOrPending = deletedUuids + pendingDeletes.keys
 
             // Remove stale local Room records that have been deleted in Cloud
             val allLocalHouseholdsToDelete = repository.getAllHouseholds().filter { deletedUuids.contains(it.householdUuid) }
@@ -435,7 +465,11 @@ open class RoomFirestoreSyncHelper(
             // 1. Process Households (Strict UUID matching & Tombstone filtering)
             for (doc in householdDocs.documents) {
                 val household = docToHousehold(doc) ?: continue
-                if (deletedUuids.contains(household.householdUuid)) {
+                if (allDeletedOrPending.contains(household.householdUuid)) {
+                    // Try to push the pending deletion to Cloud if it exists there
+                    if (pendingDeletes.contains(household.householdUuid)) {
+                        deleteHouseholdFromFirestore(household.householdUuid)
+                    }
                     continue
                 }
 
@@ -451,12 +485,12 @@ open class RoomFirestoreSyncHelper(
             }
 
             // 2. Process Persons (Strict UUID matching & Tombstone filtering)
-            val allLocalHouseholds = repository.getAllHouseholds()
-            val householdByUuid = allLocalHouseholds.associateBy { it.householdUuid }
-
             for (doc in personDocs.documents) {
                 val personUuid = doc.getString("personUuid") ?: doc.id
-                if (deletedUuids.contains(personUuid)) {
+                if (allDeletedOrPending.contains(personUuid)) {
+                    if (pendingDeletes.contains(personUuid)) {
+                        deletePersonFromFirestore(personUuid)
+                    }
                     continue
                 }
 

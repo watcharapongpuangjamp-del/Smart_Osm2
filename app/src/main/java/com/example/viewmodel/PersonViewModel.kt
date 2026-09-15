@@ -291,21 +291,7 @@ class PersonViewModel(
             try {
                 android.util.Log.d("PersonViewModel", "Starting delete household: id=${household.id}, uuid=${household.householdUuid}")
                 
-                // 1. Delete from Firestore FIRST
-                // This ensures Cloud tombstones are written BEFORE local Room deletion.
-                // Prevents resurrection if app crashes between local delete and Cloud sync.
-                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
-                    val cloudResult = syncHelper.deleteHouseholdFromFirestore(household.householdUuid)
-                    if (cloudResult.isFailure) {
-                        val cloudEx = cloudResult.exceptionOrNull()
-                        withContext(Dispatchers.Main) {
-                            onResult(false, "ลบข้อมูล Cloud ไม่สำเร็จ (ป้องกันการสูญหายหรือคืนชีพ): ${cloudEx?.message}")
-                        }
-                        return@launch
-                    }
-                }
-
-                // 2. Delete locally
+                // 1. Delete locally FIRST
                 val result = repository.deleteHousehold(household)
                 if (result.isFailure) {
                     val ex = result.exceptionOrNull()
@@ -315,8 +301,17 @@ class PersonViewModel(
                     return@launch
                 }
 
+                // 2. Try delete from Firestore, queue if failed
+                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
+                    syncHelper.queueDeletion(household.householdUuid, "household")
+                    val cloudResult = syncHelper.deleteHouseholdFromFirestore(household.householdUuid)
+                    if (cloudResult.isSuccess) {
+                        syncHelper.removeDeletionQueue(household.householdUuid)
+                    }
+                }
+
                 withContext(Dispatchers.Main) {
-                    android.util.Log.d("PersonViewModel", "Household deleted successfully (Local & Cloud)")
+                    android.util.Log.d("PersonViewModel", "Household deleted successfully (Local)")
                     onResult(true, null)
                 }
             } catch (e: Exception) {
@@ -328,7 +323,7 @@ class PersonViewModel(
         }
     }
     
-    suspend fun getHouseholdById(id: Long): Household? = repository.getHouseholdById(id)
+    suspend fun getHouseholdByIdfun getHouseholdById(id: Long): Household? = repository.getHouseholdById(id)
     suspend fun getHouseholdByNo(houseNo: String): Household? = repository.getHouseholdByNo(houseNo)
     fun getHouseholdWithPersonsById(id: Long) = repository.getHouseholdWithPersonsById(id)
 
@@ -416,17 +411,24 @@ class PersonViewModel(
     fun delete(person: Person, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // 1. Delete from Firestore FIRST
-                // This ensures Cloud tombstones are written BEFORE local Room deletion.
-                // Prevents resurrection if app crashes between local delete and Cloud sync.
-                val helper = syncHelper
-                if (helper != null && helper.isFirebaseConfigured()) {
-                    val cloudResult = helper.deletePersonFromFirestore(person.personUuid)
-                    if (cloudResult.isFailure) {
-                        val cloudEx = cloudResult.exceptionOrNull()
-                        withContext(Dispatchers.Main) {
-                            onResult(false, "ลบข้อมูล Cloud ไม่สำเร็จ (ป้องกันการสูญหายหรือคืนชีพ): ${cloudEx?.message}")
-                        }
+                // 1. Delete locally FIRST
+                val result = repository.deleteHousehold(household)
+                if (result.isFailure) {
+                    val ex = result.exceptionOrNull()
+                    withContext(Dispatchers.Main) {
+                        onResult(false, ex?.message ?: "เกิดข้อผิดพลาดในการลบบ้าน")
+                    }
+                    return@launch
+                }
+
+                // 2. Try delete from Firestore, queue if failed
+                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
+                    syncHelper.queueDeletion(household.householdUuid, "household")
+                    val cloudResult = syncHelper.deleteHouseholdFromFirestore(household.householdUuid)
+                    if (cloudResult.isSuccess) {
+                        syncHelper.removeDeletionQueue(household.householdUuid)
+                    }
+                }
                         return@launch
                     }
                 }
