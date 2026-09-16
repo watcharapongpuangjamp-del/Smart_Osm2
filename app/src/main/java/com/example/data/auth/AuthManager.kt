@@ -9,7 +9,6 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -46,16 +45,20 @@ open class AuthManager(
 
     private var lastAuthError: String? = null
 
+    /**
+     * Resolve FirebaseAuth through the injected provider so tests and callers
+     * can run without constructing the real Firebase singleton.
+     */
     private val firebaseAuth: FirebaseAuth?
         get() {
             return try {
-                FirebaseAuth.getInstance()
+                authProvider()
             } catch (e: Exception) {
                 lastAuthError = e.message
+                Log.w(TAG, "FirebaseAuth provider failed: ${e.message}")
                 null
             }
         }
-
 
     private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
