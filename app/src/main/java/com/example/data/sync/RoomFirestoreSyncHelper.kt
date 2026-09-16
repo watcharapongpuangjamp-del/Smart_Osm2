@@ -71,8 +71,6 @@ open class RoomFirestoreSyncHelper(
     private val firestoreProvider: () -> FirebaseFirestore? = {
         try {
             if (FirebaseApp.getApps(context).isNotEmpty()) {
-
-
                 FirebaseFirestore.getInstance()
             } else {
                 null
@@ -83,7 +81,13 @@ open class RoomFirestoreSyncHelper(
         }
     }
 ) {
-    companion object
+    companion object {
+        private const val TAG = "RoomFirestoreSyncHelper"
+        const val COLLECTION_HOUSEHOLDS = "households"
+        const val COLLECTION_PERSONS = "persons"
+        const val COLLECTION_TOMBSTONES = "tombstones"
+    }
+
     private val pendingDeletionsPrefs by lazy { context.getSharedPreferences("sync_pending_deletions", Context.MODE_PRIVATE) }
 
     fun queueDeletion(uuid: String, type: String) {
@@ -96,12 +100,6 @@ open class RoomFirestoreSyncHelper(
 
     private fun getQueuedDeletions(): Map<String, String> {
         return pendingDeletionsPrefs.all.mapValues { it.value.toString() }
-    }
- {
-        private const val TAG = "RoomFirestoreSyncHelper"
-        const val COLLECTION_HOUSEHOLDS = "households"
-        const val COLLECTION_PERSONS = "persons"
-        const val COLLECTION_TOMBSTONES = "tombstones"
     }
 
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
@@ -484,6 +482,7 @@ open class RoomFirestoreSyncHelper(
                 householdsImported++
             }
 
+            val householdByUuid = repository.getAllHouseholds().associateBy { it.householdUuid }
             // 2. Process Persons (Strict UUID matching & Tombstone filtering)
             for (doc in personDocs.documents) {
                 val personUuid = doc.getString("personUuid") ?: doc.id
