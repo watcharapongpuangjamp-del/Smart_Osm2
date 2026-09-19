@@ -287,12 +287,26 @@ class PersonViewModel(
         repository.updateHousehold(household.copy(lastModified = System.currentTimeMillis())) 
     }
     fun deleteHousehold(household: Household, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 android.util.Log.d("PersonViewModel", "Starting delete household: id=${household.id}, uuid=${household.householdUuid}")
                 
-                // 1. Delete locally FIRST (must NOT be blocked by Firebase/Firestore failure)
-                val result = withContext(Dispatchers.IO) { repository.deleteHousehold(household) }
+                // 1. Delete from Firestore FIRST
+                // This ensures Cloud tombstones are written BEFORE local Room deletion.
+                // Prevents resurrection if app crashes between local delete and Cloud sync.
+                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
+                    val cloudResult = syncHelper.deleteHouseholdFromFirestore(household.householdUuid)
+                    if (cloudResult.isFailure) {
+                        val cloudEx = cloudResult.exceptionOrNull()
+                        withContext(Dispatchers.Main) {
+                            onResult(false, "ลบข้อมูล Cloud ไม่สำเร็จ (ป้องกันการสูญหายหรือคืนชีพ): ${cloudEx?.message}")
+                        }
+                        return@launch
+                    }
+                }
+
+                // 2. Delete locally
+                val result = repository.deleteHousehold(household)
                 if (result.isFailure) {
                     val ex = result.exceptionOrNull()
                     withContext(Dispatchers.Main) {
@@ -301,107 +315,21 @@ class PersonViewModel(
                     return@launch
                 }
 
-                // 2. Try delete from Firestore, queue if failed
-                var cloudError: String? = null
-                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
-                    syncHelper.queueDeletion(household.householdUuid, "household")
-                    val cloudResult = withContext(Dispatchers.IO) { syncHelper.deleteHouseholdFromFirestore(household.householdUuid) }
-                    if (cloudResult.isSuccess) {
-                        syncHelper.removeDeletionQueue(household.householdUuid)
-                    } else {
-                        cloudError = "ลบข้อมูลในเครื่องสำเร็จ แต่ซิงค์ Cloud ไม่สำเร็จ (บันทึกคิวรอซิงค์แล้ว): ${cloudResult.exceptionOrNull()?.message}"
-                    }
-                }
-
                 withContext(Dispatchers.Main) {
-                    android.util.Log.d("PersonViewModel", "Household deleted successfully (Local)")
-                    onResult(true, cloudError)
+                    android.util.Log.d("PersonViewModel", "Household deleted successfully (Local & Cloud)")
+                    onResult(true, null)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("PersonViewModel", "Exception deleting household", e)
-                onResult(false, e.message ?: "เกิดข้อผิดพลาดที่ไม่คาดคิด")
+                withContext(Dispatchers.Main) {
+                    onResult(false, e.message ?: "เกิดข้อผิดพลาดที่ไม่คาดคิด")
+                }
             }
         }
     }
     
     suspend fun getHouseholdById(id: Long): Household? = repository.getHouseholdById(id)
-    suspend fun getHouseholdByNo(houseNo: String): Household? = repository.getHouseholdByNo(houseNo)
     fun getHouseholdWithPersonsById(id: Long) = repository.getHouseholdWithPersonsById(id)
-
-    suspend fun registerMember(
-        fullName: String,
-        nationalId: String?,
-        houseNo: String,
-        villageNo: String = "8",
-        subdistrict: String = "ป่าขะ",
-        district: String = "บ้านนา",
-        province: String = "นครนายก",
-        gender: Gender = Gender.MALE,
-        birthDate: LocalDate? = null,
-        isBirthYearOnly: Boolean = false,
-        houseStatus: HouseholdRole = HouseholdRole.RESIDENT,
-        personStatus: PersonStatus = PersonStatus.ALIVE,
-        dataStatus: DataStatus = DataStatus.VERIFIED
-    ): Result<Pair<Person, Household>> = withContext(Dispatchers.IO) {
-        try {
-            val cleanName = fullName.trim()
-            if (cleanName.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("กรุณาระบุชื่อ-นามสกุล"))
-            }
-
-            val cleanHouseNo = houseNo.trim()
-            if (cleanHouseNo.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("กรุณาระบุบ้านเลขที่"))
-            }
-
-            val normalizedId = nationalId?.let { ValidationUtils.normalizeNationalId(it) }?.ifBlank { null }
-            if (normalizedId != null) {
-                if (normalizedId.length != 13) {
-                    return@withContext Result.failure(IllegalArgumentException("เลขบัตรประชาชนต้องมี 13 หลัก"))
-                }
-                val existingPerson = repository.getPersonByNationalId(normalizedId)
-                if (existingPerson != null) {
-                    return@withContext Result.failure(IllegalArgumentException("เลขประจำตัวประชาชนนี้มีอยู่ในระบบแล้ว"))
-                }
-            }
-
-            // Find or create household
-            var household = repository.getHouseholdByNo(cleanHouseNo)
-            if (household == null) {
-                val newHousehold = Household(
-                    householdUuid = java.util.UUID.randomUUID().toString(),
-                    houseNo = cleanHouseNo,
-                    villageNo = villageNo.trim(),
-                    subdistrict = subdistrict.trim(),
-                    district = district.trim(),
-                    province = province.trim(),
-                    dataStatus = dataStatus,
-                    lastModified = System.currentTimeMillis()
-                )
-                val newHId = repository.insertHousehold(newHousehold)
-                household = newHousehold.copy(id = newHId)
-            }
-
-            val newPerson = Person(
-                personUuid = java.util.UUID.randomUUID().toString(),
-                householdId = household.id,
-                nationalId = normalizedId,
-                fullName = cleanName,
-                gender = gender,
-                birthDate = birthDate,
-                isBirthYearOnly = isBirthYearOnly,
-                houseStatus = houseStatus,
-                personStatus = personStatus,
-                dataStatus = dataStatus,
-                lastModified = System.currentTimeMillis()
-            )
-            repository.insert(newPerson)
-
-            Result.success(Pair(newPerson, household))
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
 
     fun insert(person: Person) = viewModelScope.launch { 
         repository.insert(person.copy(lastModified = System.currentTimeMillis())) 
@@ -410,32 +338,33 @@ class PersonViewModel(
         repository.update(person.copy(lastModified = System.currentTimeMillis())) 
     }
     fun delete(person: Person, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                android.util.Log.d("PersonViewModel", "Starting delete person: id=${person.id}, uuid=${person.personUuid}")
-                
-                // 1. Delete locally FIRST (must NOT be blocked by Firebase/Firestore failure)
-                withContext(Dispatchers.IO) { repository.delete(person) }
-
-                // 2. Try delete from Firestore, queue if failed
-                var cloudError: String? = null
-                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
-                    syncHelper.queueDeletion(person.personUuid, "person")
-                    val cloudResult = withContext(Dispatchers.IO) { syncHelper.deletePersonFromFirestore(person.personUuid) }
-                    if (cloudResult.isSuccess) {
-                        syncHelper.removeDeletionQueue(person.personUuid)
-                    } else {
-                        cloudError = "ลบข้อมูลในเครื่องสำเร็จ แต่ซิงค์ Cloud ไม่สำเร็จ (บันทึกคิวรอซิงค์แล้ว): ${cloudResult.exceptionOrNull()?.message}"
+                // 1. Delete from Firestore FIRST
+                // This ensures Cloud tombstones are written BEFORE local Room deletion.
+                // Prevents resurrection if app crashes between local delete and Cloud sync.
+                val helper = syncHelper
+                if (helper != null && helper.isFirebaseConfigured()) {
+                    val cloudResult = helper.deletePersonFromFirestore(person.personUuid)
+                    if (cloudResult.isFailure) {
+                        val cloudEx = cloudResult.exceptionOrNull()
+                        withContext(Dispatchers.Main) {
+                            onResult(false, "ลบข้อมูล Cloud ไม่สำเร็จ (ป้องกันการสูญหายหรือคืนชีพ): ${cloudEx?.message}")
+                        }
+                        return@launch
                     }
                 }
 
+                // 2. Delete locally
+                repository.delete(person)
+                
                 withContext(Dispatchers.Main) {
-                    android.util.Log.d("PersonViewModel", "Person deleted successfully (Local)")
-                    onResult(true, cloudError)
+                    onResult(true, null)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("PersonViewModel", "Exception deleting person", e)
-                onResult(false, e.message ?: "เกิดข้อผิดพลาดที่ไม่คาดคิด")
+                withContext(Dispatchers.Main) {
+                    onResult(false, e.message ?: "เกิดข้อผิดพลาดที่ไม่คาดคิด")
+                }
             }
         }
     }

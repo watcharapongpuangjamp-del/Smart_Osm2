@@ -55,12 +55,9 @@ fun HouseholdFormScreen(
     val locationPermissionState = rememberPermissionState(permission = Manifest.permission.ACCESS_FINE_LOCATION)
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    var currentHousehold by remember { mutableStateOf<Household?>(null) }
-
     LaunchedEffect(householdId) {
         if (householdId != -1L) {
             val household = viewModel.getHouseholdById(householdId)
-            currentHousehold = household
             household?.let {
                 houseNo = it.houseNo
                 latitude = it.latitude
@@ -99,14 +96,7 @@ fun HouseholdFormScreen(
             ExtendedFloatingActionButton(
                 onClick = {
                     if (houseNo.isNotBlank()) {
-                        val household = currentHousehold?.copy(
-                            houseNo = houseNo.trim(),
-                            latitude = latitude,
-                            longitude = longitude,
-                            locationAccuracy = locationAccuracy,
-                            locationCapturedAt = locationCapturedAt,
-                            locationProvider = locationProvider
-                        ) ?: Household(
+                        val household = Household(
                             id = if (householdId == -1L) 0 else householdId,
                             houseNo = houseNo.trim(),
                             latitude = latitude,
