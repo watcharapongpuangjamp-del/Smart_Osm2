@@ -104,7 +104,8 @@ fun AppNavigation(
             composable("splash") {
                 SplashScreen(
                     onStartApp = {
-                        navController.navigate("login") {
+                        val destination = if (authViewModel.currentUser.value != null) "pin_lock" else "login"
+                        navController.navigate(destination) {
                             popUpTo("splash") { inclusive = true }
                         }
                     }

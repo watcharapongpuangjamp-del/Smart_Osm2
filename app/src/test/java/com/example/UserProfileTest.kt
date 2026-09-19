@@ -117,6 +117,27 @@ class UserProfileTest {
     }
 
     @Test
+    fun `UserProfile holds surveyor area and role attributes`() {
+        val profile = UserProfile(
+            uid = "firebase-uid-osm-1",
+            displayName = "สมศรี สุขเกษม",
+            villageNo = "8",
+            villageName = "หมู่ 8 บ้านกร่างประดู่วัง",
+            subdistrict = "ต.ป่าขะ",
+            district = "อ.บ้านนา",
+            province = "จ.นครนายก",
+            roleTitle = "อสม. ประจำหมู่บ้าน"
+        )
+
+        assertEquals("8", profile.villageNo)
+        assertEquals("หมู่ 8 บ้านกร่างประดู่วัง", profile.villageName)
+        assertEquals("ต.ป่าขะ", profile.subdistrict)
+        assertEquals("อ.บ้านนา", profile.district)
+        assertEquals("จ.นครนายก", profile.province)
+        assertEquals("อสม. ประจำหมู่บ้าน", profile.roleTitle)
+    }
+
+    @Test
     fun `AuthViewModel exposes userProfile StateFlow`() = runTest(testDispatcher) {
         val fakeAuthManager = object : AuthManager({ null }) {}
         val viewModel = AuthViewModel(fakeAuthManager)

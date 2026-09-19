@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -425,6 +426,30 @@ private fun UserProfileHeroCard(
                         }
                     }
                 }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White.copy(alpha = 0.2f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Place,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "${profile.villageName} • ${profile.roleTitle}",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
         }
     }
@@ -568,6 +593,20 @@ private fun UserDetailsSection(
                 icon = Icons.Filled.Person,
                 title = "ชื่อที่แสดง (Display Name)",
                 value = profile.displayName ?: "ไม่ได้ระบุ (No Display Name)"
+            )
+
+            // Area / Village Row
+            DetailItemRow(
+                icon = Icons.Filled.Place,
+                title = "พื้นที่รับผิดชอบ (Area / Village)",
+                value = "${profile.villageName} (${profile.subdistrict} ${profile.district} ${profile.province})"
+            )
+
+            // Role Row
+            DetailItemRow(
+                icon = Icons.Filled.VerifiedUser,
+                title = "ตำแหน่ง / สิทธิ์การใช้งาน",
+                value = profile.roleTitle
             )
 
             // Email Row

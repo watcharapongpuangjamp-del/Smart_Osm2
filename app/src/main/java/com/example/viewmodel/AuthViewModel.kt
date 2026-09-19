@@ -50,6 +50,8 @@ class AuthViewModel(
                     val userFriendlyMsg = when {
                         error is androidx.credentials.exceptions.GetCredentialCancellationException ->
                             "ยกเลิกการเข้าสู่ระบบด้วย Google"
+                        error.message?.contains("MISSING_WEB_CLIENT_ID") == true ->
+                            "MISSING_WEB_CLIENT_ID"
                         error.message?.contains("Web Client ID", ignoreCase = true) == true ->
                             error.message ?: "กรุณาระบุ Web Client ID"
                         else ->
@@ -130,5 +132,36 @@ class AuthViewModel(
     fun signOut() {
         authManager.signOut()
         _uiState.value = AuthUiState.Idle
+    }
+
+    fun loadSurveyorProfile(context: Context) {
+        authManager.loadSurveyorProfile(context)
+    }
+
+    fun saveSurveyorProfile(
+        context: Context,
+        villageNo: String,
+        villageName: String,
+        subdistrict: String = "ต.ป่าขะ",
+        district: String = "อ.บ้านนา",
+        province: String = "จ.นครนายก",
+        phone: String? = null,
+        role: String? = "อสม. ประจำหมู่บ้าน"
+    ) {
+        authManager.saveSurveyorProfile(
+            context = context,
+            villageNo = villageNo,
+            villageName = villageName,
+            subdistrict = subdistrict,
+            district = district,
+            province = province,
+            phone = phone,
+            role = role
+        )
+    }
+
+    fun saveWebClientId(context: Context, clientId: String) {
+        val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("web_client_id", clientId.trim()).apply()
     }
 }
