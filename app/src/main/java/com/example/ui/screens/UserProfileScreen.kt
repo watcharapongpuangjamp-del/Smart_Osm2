@@ -52,12 +52,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import com.example.util.BiometricAuthHelper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,6 +115,9 @@ fun UserProfileScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var showSignOutDialog by remember { mutableStateOf(false) }
+
+    val isBiometricHardwareAvailable = remember(context) { BiometricAuthHelper.isBiometricAvailable(context) }
+    var isBiometricEnabled by remember(context) { mutableStateOf(BiometricAuthHelper.isBiometricEnabled(context)) }
 
     Scaffold(
         modifier = modifier
@@ -231,6 +237,93 @@ fun UserProfileScreen(
                             Icon(Icons.Filled.Logout, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("ออกจากระบบ (Sign Out)", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                // Biometric / Security Settings Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "ความปลอดภัย (Security & Biometrics)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(EmeraldPrimary.copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Fingerprint,
+                                        contentDescription = "ลายนิ้วมือ",
+                                        tint = EmeraldPrimary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "ปลดล็อกด้วยสแกนลายนิ้วมือ",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = if (isBiometricHardwareAvailable) {
+                                            if (isBiometricEnabled) "เปิดใช้งาน เข้าแอปได้รวดเร็ว" else "ปิดการใช้งาน (ใช้ PIN เท่านั้น)"
+                                        } else {
+                                            "อุปกรณ์นี้ไม่รองรับหรือยังไม่ได้ลงทะเบียนลายนิ้วมือ"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = isBiometricEnabled && isBiometricHardwareAvailable,
+                                onCheckedChange = { checked ->
+                                    if (isBiometricHardwareAvailable) {
+                                        isBiometricEnabled = checked
+                                        BiometricAuthHelper.setBiometricEnabled(context, checked)
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                if (checked) "เปิดใช้งานสแกนลายนิ้วมือแล้ว" else "ปิดใช้งานสแกนลายนิ้วมือแล้ว"
+                                            )
+                                        }
+                                    } else {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("อุปกรณ์นี้ไม่รองรับหรือยังไม่ได้ลงทะเบียนลายนิ้วมือในระบบ Android")
+                                        }
+                                    }
+                                },
+                                enabled = isBiometricHardwareAvailable,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = EmeraldPrimary
+                                )
+                            )
                         }
                     }
                 }
