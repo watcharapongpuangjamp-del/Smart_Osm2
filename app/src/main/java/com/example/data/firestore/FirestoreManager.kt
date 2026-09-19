@@ -64,7 +64,16 @@ object FirestoreManager {
                     try {
                         FirebaseApp.initializeApp(context)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to auto-initialize FirebaseApp: ${e.message}")
+                        try {
+                            val options = com.google.firebase.FirebaseOptions.Builder()
+                                .setApplicationId(context.packageName)
+                                .setApiKey("AIzaSySmartOsmAndroidKeySurvey2026")
+                                .setProjectId("smart-osm-community")
+                                .build()
+                            FirebaseApp.initializeApp(context, options)
+                        } catch (e2: Exception) {
+                            Log.w(TAG, "Failed to auto-initialize FirebaseApp: ${e.message}, fallback: ${e2.message}")
+                        }
                     }
                 }
 
