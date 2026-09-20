@@ -63,6 +63,8 @@ class AuthViewModel(
                     val userFriendlyMsg = when {
                         error is androidx.credentials.exceptions.GetCredentialCancellationException ->
                             "ยกเลิกการเข้าสู่ระบบด้วย Google"
+                        error.message?.contains("No credentials available", ignoreCase = true) == true ->
+                            "ไม่พบบัญชี Google ที่พร้อมใช้งานบนอุปกรณ์นี้ (กรุณาลงชื่อเข้าใช้ Google ในการตั้งค่าโทรศัพท์ หรือใช้บัญชีผู้สำรวจด้านล่าง)"
                         error.message?.contains("MISSING_WEB_CLIENT_ID") == true ->
                             "MISSING_WEB_CLIENT_ID"
                         error.message?.contains("Web Client ID", ignoreCase = true) == true ->

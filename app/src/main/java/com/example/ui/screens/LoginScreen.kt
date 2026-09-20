@@ -645,6 +645,28 @@ fun LoginScreen(
                             )
                         }
 
+                        // One-click Test Surveyor Login (gigatvthai@gmail.com)
+                        TextButton(
+                            onClick = {
+                                authViewModel.signInWithGoogleTest(context, "gigatvthai@gmail.com")
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("btn_quick_test_login")
+                        ) {
+                            Icon(
+                                Icons.Filled.AccountCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = EmeraldPrimary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "เข้าสู่ระบบด่วนด้วยบัญชีผู้สำรวจ (gigatvthai@gmail.com)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = EmeraldPrimary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
                         // Collapsible text button for Secondary Email / Guest Auth
                         TextButton(
                             onClick = { showEmailAuthOptions = !showEmailAuthOptions }
