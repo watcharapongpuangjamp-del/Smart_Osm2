@@ -77,16 +77,8 @@ open class AuthManager(
                 try {
                     FirebaseApp.initializeApp(context)
                 } catch (e: Exception) {
-                    try {
-                        val options = com.google.firebase.FirebaseOptions.Builder()
-                            .setApplicationId(context.packageName)
-                            .setApiKey("AIzaSySmartOsmAndroidKeySurvey2026")
-                            .setProjectId("smart-osm-community")
-                            .build()
-                        FirebaseApp.initializeApp(context, options)
-                    } catch (e2: Exception) {
-                        Log.w(TAG, "Fallback FirebaseApp init failed: ${e2.message}")
-                    }
+                    // The google-services.json configuration is the single source of truth.
+                    Log.w(TAG, "FirebaseApp initialization failed: " + e.message)
                 }
             }
             return try {
