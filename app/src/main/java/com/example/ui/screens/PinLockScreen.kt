@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import android.content.Context
-import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -14,7 +13,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.*
@@ -30,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.MintAccent
-import com.example.util.BiometricAuthHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -50,58 +47,6 @@ fun PinLockScreen(
     var errorMessage by remember { mutableStateOf("") }
     
     val scope = rememberCoroutineScope()
-
-    val canUseBiometric = remember(context) {
-        BiometricAuthHelper.isBiometricAvailable(context) && 
-        BiometricAuthHelper.isBiometricEnabled(context)
-    }
-
-    // Function to trigger biometric authentication prompt
-    val triggerBiometricAuth: () -> Unit = remember(context, onUnlock) {
-        {
-            val activity = BiometricAuthHelper.findFragmentActivity(context)
-            if (activity != null && canUseBiometric) {
-                BiometricAuthHelper.authenticate(
-                    activity = activity,
-                    title = "ยืนยันตัวตนด้วยลายนิ้วมือ",
-                    subtitle = "แตะเซนเซอร์สแกนลายนิ้วมือเพื่อเข้าใช้งาน Smart OSM",
-                    negativeButtonText = "ใช้รหัส PIN แทน",
-                    onSuccess = {
-                        onUnlock()
-                    },
-                    onError = { errorCode, errString ->
-                        // Don't show error if user cancelled intentionally
-                        if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && 
-                            errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
-                            errorMessage = errString.toString()
-                            isError = true
-                            scope.launch {
-                                delay(3000)
-                                isError = false
-                            }
-                        }
-                    },
-                    onFailed = {
-                        errorMessage = "ไม่พบลายนิ้วมือที่ตรงกัน กรุณาลองใหม่อีกครั้ง"
-                        isError = true
-                        scope.launch {
-                            delay(2000)
-                            isError = false
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    // Auto-prompt biometric if user has an existing PIN or biometric is configured
-    LaunchedEffect(Unit) {
-        if (canUseBiometric && savedPin != null) {
-            // Give the screen a brief moment to render smoothly before showing system dialog
-            delay(350)
-            triggerBiometricAuth()
-        }
-    }
 
     val title = when {
         savedPin != null -> "กรุณาใส่รหัสผ่าน (PIN)"
@@ -233,7 +178,7 @@ fun PinLockScreen(
                     listOf("1", "2", "3"),
                     listOf("4", "5", "6"),
                     listOf("7", "8", "9"),
-                    listOf(if (canUseBiometric && savedPin != null) "BIO" else "", "0", "DEL")
+                    listOf("", "0", "DEL")
                 )
                 
                 padData.forEach { row ->
@@ -243,22 +188,6 @@ fun PinLockScreen(
                         row.forEach { key ->
                             if (key.isEmpty()) {
                                 Spacer(modifier = Modifier.size(72.dp))
-                            } else if (key == "BIO") {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .size(72.dp)
-                                        .clip(CircleShape)
-                                        .background(MintAccent.copy(alpha = 0.2f))
-                                        .clickable { triggerBiometricAuth() }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Fingerprint,
-                                        contentDescription = "สแกนลายนิ้วมือ",
-                                        tint = MintAccent,
-                                        modifier = Modifier.size(36.dp)
-                                    )
-                                }
                             } else if (key == "DEL") {
                                 Box(
                                     contentAlignment = Alignment.Center,

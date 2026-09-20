@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,7 +42,6 @@ fun HouseDetailScreen(
     viewModel: PersonViewModel,
     householdId: Long,
     onNavigateBack: () -> Unit,
-    onNavigateToMap: (Long) -> Unit = {},
     onAddMemberClick: () -> Unit,
     onEditMemberClick: (Long) -> Unit,
     onHistoryClick: (Long) -> Unit
@@ -238,50 +236,23 @@ fun HouseDetailScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
                         if (household.latitude != null && household.longitude != null) {
+                            Spacer(modifier = Modifier.height(12.dp))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color.White.copy(alpha = 0.12f))
-                                    .clickable { onNavigateToMap(household.id) }
                                     .padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.LocationOn, contentDescription = null, tint = MintAccent, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        "พิกัด GPS: ${household.latitude}, ${household.longitude}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White
-                                    )
-                                }
-                                Text("ดูบนแผนที่ ›", style = MaterialTheme.typography.labelSmall, color = MintAccent, fontWeight = FontWeight.Bold)
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.White.copy(alpha = 0.12f))
-                                    .clickable { onNavigateToMap(household.id) }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.LocationOn, contentDescription = null, tint = Color(0xFFFFB74D), modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        "ยังไม่ได้ปักหมุดพิกัด",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White.copy(alpha = 0.9f)
-                                    )
-                                }
-                                Text("ปักหมุดบนแผนที่ ›", style = MaterialTheme.typography.labelSmall, color = MintAccent, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Filled.LocationOn, contentDescription = null, tint = MintAccent, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "พิกัด GPS: ${household.latitude}, ${household.longitude}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White
+                                )
                             }
                         }
                     }

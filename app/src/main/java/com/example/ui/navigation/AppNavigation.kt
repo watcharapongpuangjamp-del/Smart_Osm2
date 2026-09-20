@@ -104,8 +104,7 @@ fun AppNavigation(
             composable("splash") {
                 SplashScreen(
                     onStartApp = {
-                        val destination = if (authViewModel.currentUser.value != null) "pin_lock" else "login"
-                        navController.navigate(destination) {
+                        navController.navigate("login") {
                             popUpTo("splash") { inclusive = true }
                         }
                     }
@@ -187,19 +186,9 @@ fun AppNavigation(
                     }
                 )
             }
-            composable(
-                route = "map?targetHouseholdId={targetHouseholdId}",
-                arguments = listOf(
-                    navArgument("targetHouseholdId") {
-                        type = NavType.LongType
-                        defaultValue = -1L
-                    }
-                )
-            ) { backStackEntry ->
-                val targetHouseholdId = backStackEntry.arguments?.getLong("targetHouseholdId") ?: -1L
+            composable(BottomNavItem.Map.route) {
                 MapScreen(
                     viewModel = viewModel,
-                    targetHouseholdId = targetHouseholdId,
                     onHouseClick = { householdId -> navController.navigate("house_detail/$householdId") }
                 )
             }
@@ -266,7 +255,6 @@ fun AppNavigation(
                     viewModel = viewModel,
                     householdId = householdId,
                     onNavigateBack = { navController.popBackStack() },
-                    onNavigateToMap = { houseId -> navController.navigate("map?targetHouseholdId=$houseId") },
                     onAddMemberClick = { navController.navigate("person_form/-1?householdId=$householdId") },
                     onEditMemberClick = { personId -> navController.navigate("person_form/$personId?householdId=$householdId") },
                     onHistoryClick = { personId -> navController.navigate("person_history/$personId") }

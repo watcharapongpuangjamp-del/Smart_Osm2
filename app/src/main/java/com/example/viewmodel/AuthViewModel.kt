@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 sealed interface AuthUiState {
     object Idle : AuthUiState
     data class Loading(val message: String) : AuthUiState
-    data class Success(val user: Any?, val message: String) : AuthUiState
+    data class Success(val user: FirebaseUser, val message: String) : AuthUiState
     data class Error(val message: String, val throwable: Throwable? = null) : AuthUiState
 }
 
@@ -38,19 +38,6 @@ class AuthViewModel(
         _uiState.value = AuthUiState.Idle
     }
 
-    fun signInWithGoogleTest(context: Context, email: String = "gigatvthai@gmail.com") {
-        _uiState.value = AuthUiState.Loading("กำลังเข้าสู่ระบบบัญชีทดสอบ Google...")
-        val result = authManager.signInWithGoogleTest(context, email)
-        result.fold(
-            onSuccess = { profile ->
-                _uiState.value = AuthUiState.Success(profile, "เข้าสู่ระบบบัญชี Google ทดสอบสำเร็จ")
-            },
-            onFailure = { error ->
-                _uiState.value = AuthUiState.Error(error.message ?: "เข้าสู่ระบบทดสอบไม่สำเร็จ", error)
-            }
-        )
-    }
-
     fun signInWithGoogle(context: Context, customClientId: String? = null) {
         _uiState.value = AuthUiState.Loading("กำลังเชื่อมต่อ Google Sign-In ผ่าน Credential Manager...")
         viewModelScope.launch {
@@ -63,10 +50,6 @@ class AuthViewModel(
                     val userFriendlyMsg = when {
                         error is androidx.credentials.exceptions.GetCredentialCancellationException ->
                             "ยกเลิกการเข้าสู่ระบบด้วย Google"
-                        error.message?.contains("No credentials available", ignoreCase = true) == true ->
-                            "ไม่พบบัญชี Google ที่พร้อมใช้งานบนอุปกรณ์นี้ (กรุณาลงชื่อเข้าใช้ Google ในการตั้งค่าโทรศัพท์ หรือใช้บัญชีผู้สำรวจด้านล่าง)"
-                        error.message?.contains("MISSING_WEB_CLIENT_ID") == true ->
-                            "MISSING_WEB_CLIENT_ID"
                         error.message?.contains("Web Client ID", ignoreCase = true) == true ->
                             error.message ?: "กรุณาระบุ Web Client ID"
                         else ->
@@ -144,39 +127,8 @@ class AuthViewModel(
         }
     }
 
-    fun signOut(context: Context? = null) {
-        authManager.signOut(context)
+    fun signOut() {
+        authManager.signOut()
         _uiState.value = AuthUiState.Idle
-    }
-
-    fun loadSurveyorProfile(context: Context) {
-        authManager.loadSurveyorProfile(context)
-    }
-
-    fun saveSurveyorProfile(
-        context: Context,
-        villageNo: String,
-        villageName: String,
-        subdistrict: String = "ต.ป่าขะ",
-        district: String = "อ.บ้านนา",
-        province: String = "จ.นครนายก",
-        phone: String? = null,
-        role: String? = "อสม. ประจำหมู่บ้าน"
-    ) {
-        authManager.saveSurveyorProfile(
-            context = context,
-            villageNo = villageNo,
-            villageName = villageName,
-            subdistrict = subdistrict,
-            district = district,
-            province = province,
-            phone = phone,
-            role = role
-        )
-    }
-
-    fun saveWebClientId(context: Context, clientId: String) {
-        val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putString("web_client_id", clientId.trim()).apply()
     }
 }

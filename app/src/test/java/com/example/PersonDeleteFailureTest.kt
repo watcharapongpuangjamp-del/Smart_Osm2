@@ -90,17 +90,13 @@ class PersonDeleteFailureTest {
         // 4. Act: Attempt to delete the person
         var resultSuccess: Boolean? = null
         var resultMessage: String? = null
-        val latch = java.util.concurrent.CountDownLatch(1)
         
         viewModel.delete(insertedPerson!!) { success, message ->
             resultSuccess = success
             resultMessage = message
-            latch.countDown()
         }
         
         // Wait for coroutines to complete
-        testDispatcher.scheduler.advanceUntilIdle()
-        latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
         testDispatcher.scheduler.advanceUntilIdle()
 
         // 5. Assert: The callback should indicate failure due to cloud error

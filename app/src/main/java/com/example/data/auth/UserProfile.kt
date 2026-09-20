@@ -27,13 +27,7 @@ data class UserProfile(
     val providerId: String = "firebase",
     val providerIds: List<String> = emptyList(),
     val creationTimestamp: Long? = null,
-    val lastSignInTimestamp: Long? = null,
-    val villageNo: String = "8",
-    val villageName: String = "หมู่ 8 บ้านกร่างประดู่วัง",
-    val subdistrict: String = "ต.ป่าขะ",
-    val district: String = "อ.บ้านนา",
-    val province: String = "จ.นครนายก",
-    val roleTitle: String = "อสม. ประจำหมู่บ้าน"
+    val lastSignInTimestamp: Long? = null
 ) {
     /**
      * True if this profile represents an authenticated Firebase user with a valid UID.
@@ -76,7 +70,7 @@ data class UserProfile(
 
     companion object {
         private val thaiDateFormat by lazy {
-            SimpleDateFormat("d MMM yyyy, HH:mm น.", Locale.forLanguageTag("th-TH"))
+            SimpleDateFormat("d MMM yyyy, HH:mm น.", Locale("th", "TH"))
         }
 
         private fun formatDate(epochMillis: Long): String {
@@ -91,16 +85,7 @@ data class UserProfile(
          * Safely creates a [UserProfile] instance from a [FirebaseUser].
          * Safely handles any null fields or unavailable metadata.
          */
-        fun fromFirebaseUser(
-            user: FirebaseUser,
-            villageNo: String = "8",
-            villageName: String = "หมู่ 8 บ้านกร่างประดู่วัง",
-            subdistrict: String = "ต.ป่าขะ",
-            district: String = "อ.บ้านนา",
-            province: String = "จ.นครนายก",
-            phoneNumberOverride: String? = null,
-            roleTitle: String = "อสม. ประจำหมู่บ้าน"
-        ): UserProfile {
+        fun fromFirebaseUser(user: FirebaseUser): UserProfile {
             val providerList = try {
                 user.providerData.map { it.providerId }
             } catch (e: Exception) {
@@ -113,19 +98,12 @@ data class UserProfile(
                 email = user.email?.takeIf { it.isNotBlank() },
                 photoUrl = try { user.photoUrl?.toString() } catch (e: Exception) { null },
                 isEmailVerified = try { user.isEmailVerified } catch (e: Exception) { false },
-                phoneNumber = phoneNumberOverride?.takeIf { it.isNotBlank() }
-                    ?: try { user.phoneNumber?.takeIf { it.isNotBlank() } } catch (e: Exception) { null },
+                phoneNumber = try { user.phoneNumber?.takeIf { it.isNotBlank() } } catch (e: Exception) { null },
                 isAnonymous = try { user.isAnonymous } catch (e: Exception) { false },
                 providerId = try { user.providerId } catch (e: Exception) { "firebase" },
                 providerIds = providerList,
                 creationTimestamp = try { user.metadata?.creationTimestamp } catch (e: Exception) { null },
-                lastSignInTimestamp = try { user.metadata?.lastSignInTimestamp } catch (e: Exception) { null },
-                villageNo = villageNo,
-                villageName = villageName,
-                subdistrict = subdistrict,
-                district = district,
-                province = province,
-                roleTitle = roleTitle
+                lastSignInTimestamp = try { user.metadata?.lastSignInTimestamp } catch (e: Exception) { null }
             )
         }
     }
