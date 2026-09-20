@@ -378,7 +378,7 @@ open class AuthManager(
                             )
                         )
                     }
-                }                }
+                }
 
                 val userEmail = googleIdTokenCredential.id
                 val displayName = googleIdTokenCredential.displayName ?: userEmail.substringBefore("@")
