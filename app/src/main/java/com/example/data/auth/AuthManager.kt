@@ -1,6 +1,9 @@
 package com.example.data.auth
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.MutableContextWrapper
 import android.util.Base64
 import android.util.Log
 import androidx.credentials.CredentialManager
@@ -16,12 +19,10 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
 
 /**
  * Authentication manager for Smart OSM.
@@ -311,7 +312,7 @@ open class AuthManager(
     open suspend fun signInWithGoogle(
         context: Context,
         customWebClientId: String? = null
-    ): Result<UserProfile> = withContext(Dispatchers.IO) {
+    ): Result<UserProfile> {
         try {
             // 1. Resolve Web Client ID from params, saved preferences, or generated strings.xml
             val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
@@ -342,6 +343,16 @@ open class AuthManager(
             }
 
             // 2. Trigger Android Credential Manager.
+            // Credential Manager launches system UI, so always use the foreground
+            // Activity context (wrapped for Activity recreation) and keep this call
+            // on the caller coroutine rather than moving it to Dispatchers.IO.
+            val activityContext = context.findActivity() ?: context
+            val credentialUiContext = if (activityContext is Activity) {
+                MutableContextWrapper(activityContext)
+            } else {
+                activityContext
+            }
+
             // Use the standard bottom-sheet flow first. If Google reports that
             // no matching credential is available, fall back to the explicit
             // "Sign in with Google" button flow, which also supports accounts
@@ -367,7 +378,7 @@ open class AuthManager(
             val response = try {
                 credentialManager.getCredential(
                     request = bottomSheetRequest,
-                    context = context
+                    context = credentialUiContext
                 )
             } catch (e: NoCredentialException) {
                 Log.w(TAG, "No Google credential in bottom sheet; falling back to explicit Google sign-in", e)
@@ -384,7 +395,7 @@ open class AuthManager(
 
                 credentialManager.getCredential(
                     request = buttonRequest,
-                    context = context
+                    context = credentialUiContext
                 )
             }
 
@@ -457,8 +468,13 @@ open class AuthManager(
                 Result.failure(IllegalStateException("ประเภทข้อมูล Credential ไม่ถูกต้อง: ${credential::class.java.name}"))
             }
         } catch (e: GetCredentialCancellationException) {
-            Log.i(TAG, "User cancelled Google Sign-In prompt")
-            Result.failure(e)
+            Log.w(TAG, "Google Sign-In flow was cancelled by Credential Manager: ${e.message}", e)
+            Result.failure(
+                IllegalStateException(
+                    "GOOGLE_SIGN_IN_CANCELLED: Credential Manager ยกเลิกหรือปิดขั้นตอนเลือกบัญชี: ${e.message ?: "unknown"}",
+                    e
+                )
+            )
         } catch (e: GetCredentialException) {
             Log.e(TAG, "CredentialManager failed: ${e.message}", e)
             Result.failure(e)
@@ -466,6 +482,15 @@ open class AuthManager(
             Log.e(TAG, "Authentication failed", e)
             Result.failure(e)
         }
+    }
+
+    private fun Context.findActivity(): Activity? {
+        var current: Context = this
+        while (current is ContextWrapper) {
+            if (current is Activity) return current
+            current = current.baseContext
+        }
+        return current as? Activity
     }
 
     /**
