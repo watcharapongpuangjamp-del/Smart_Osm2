@@ -152,6 +152,37 @@ open class RoomFirestoreSyncHelper(
     private fun shouldAcceptRemote(local: SyncMetadata, remote: SyncMetadata): Boolean =
         ConflictResolver.decide(local, remote) == ConflictResolver.Decision.ACCEPT_REMOTE
 
+    private fun nextVersion(localVersion: Long, remoteVersion: Long?): Long =
+        maxOf(localVersion, remoteVersion ?: 0L) + 1L
+
+    private fun householdToVersionedMap(
+        household: Household,
+        remote: DocumentSnapshot?
+    ): Map<String, Any?> {
+        val now = System.currentTimeMillis()
+        return householdToMap(household) + mapOf(
+            "version" to nextVersion(household.version, remote?.getLong("version")),
+            "serverUpdatedAt" to now,
+            "updatedAt" to now,
+            "updatedFrom" to (household.updatedFrom ?: "android")
+        )
+    }
+
+    private fun personToVersionedMap(
+        person: Person,
+        householdUuid: String,
+        householdHouseNo: String,
+        remote: DocumentSnapshot?
+    ): Map<String, Any?> {
+        val now = System.currentTimeMillis()
+        return personToMap(person, householdUuid, householdHouseNo) + mapOf(
+            "version" to nextVersion(person.version, remote?.getLong("version")),
+            "serverUpdatedAt" to now,
+            "updatedAt" to now,
+            "updatedFrom" to (person.updatedFrom ?: "android")
+        )
+    }
+
 
     /**
      * Uploads all local Room households and registered citizens to Cloud Firestore,
@@ -192,7 +223,7 @@ open class RoomFirestoreSyncHelper(
                 val remote = cloudHouseholds[h.householdUuid]
                 if (remote != null && !shouldUpload(localMetadata(h), remoteMetadata(remote))) continue
                 val docRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(h.householdUuid)
-                val data = householdToMap(h)
+                val data = householdToVersionedMap(h, remote)
                 batch.set(docRef, data, SetOptions.merge())
                 opsInBatch++
                 householdsSynced++
@@ -209,7 +240,7 @@ open class RoomFirestoreSyncHelper(
                 val remote = cloudPersons[p.personUuid]
                 if (remote != null && !shouldUpload(localMetadata(p), remoteMetadata(remote))) continue
                 val docRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
-                val data = personToMap(p, parentHousehold.householdUuid, parentHousehold.houseNo)
+                val data = personToVersionedMap(p, parentHousehold.householdUuid, parentHousehold.houseNo, remote)
                 batch.set(docRef, data, SetOptions.merge())
                 opsInBatch++
                 personsSynced++
@@ -276,11 +307,17 @@ open class RoomFirestoreSyncHelper(
             val batch = firestore.batch()
 
             val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(household.householdUuid)
-            batch.set(hRef, householdToMap(household), SetOptions.merge())
+            val remoteHousehold = hRef.get().await()
+            if (remoteHousehold.exists() && !shouldUpload(localMetadata(household), remoteMetadata(remoteHousehold))) {
+                return@withContext Result.failure(IllegalStateException("Cloud มีข้อมูลครัวเรือนใหม่กว่า จึงไม่เขียนทับ"))
+            }
+            batch.set(hRef, householdToVersionedMap(household, remoteHousehold), SetOptions.merge())
 
             for (p in validPersons) {
                 val pRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
-                batch.set(pRef, personToMap(p, household.householdUuid, household.houseNo), SetOptions.merge())
+                val remotePerson = pRef.get().await()
+                if (remotePerson.exists() && !shouldUpload(localMetadata(p), remoteMetadata(remotePerson))) continue
+                batch.set(pRef, personToVersionedMap(p, household.householdUuid, household.houseNo, remotePerson), SetOptions.merge())
             }
 
             batch.commit().await()
@@ -307,7 +344,11 @@ open class RoomFirestoreSyncHelper(
     @androidx.annotation.VisibleForTesting
     internal open suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
         val pRef = getFirestore().collection(COLLECTION_PERSONS).document(person.personUuid)
-        pRef.set(personToMap(person, householdUuid, householdHouseNo), SetOptions.merge()).await()
+        val remote = pRef.get().await()
+        if (remote.exists() && !shouldUpload(localMetadata(person), remoteMetadata(remote))) {
+            throw IllegalStateException("Cloud มีข้อมูลบุคคลใหม่กว่า จึงไม่เขียนทับ")
+        }
+        pRef.set(personToVersionedMap(person, householdUuid, householdHouseNo, remote), SetOptions.merge()).await()
     }
 
     /**
