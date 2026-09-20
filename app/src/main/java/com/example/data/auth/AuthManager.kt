@@ -335,7 +335,7 @@ open class AuthManager(
                 ?: defaultWebClientId.trim().takeIf { it.isNotBlank() }
 
             if (clientId.isNullOrBlank()) {
-                return@withContext Result.failure(
+                return Result.failure(
                     IllegalStateException(
                         "MISSING_WEB_CLIENT_ID: ยังไม่ได้กำหนดค่า Web Client ID สำหรับ Google Sign-In"
                     )
@@ -408,7 +408,7 @@ open class AuthManager(
                 // 3. Firebase Authentication is mandatory for cloud identity.
                 val auth = ensureFirebase(context) ?: firebaseAuth
                 if (auth == null) {
-                    return@withContext Result.failure(
+                    return Result.failure(
                         IllegalStateException("FIREBASE_AUTH_UNAVAILABLE: Firebase Authentication ยังไม่พร้อมใช้งาน")
                     )
                 }
@@ -420,7 +420,7 @@ open class AuthManager(
                         firebaseUser = authResult.user
                     } catch (e: Exception) {
                         Log.e(TAG, "Firebase credential exchange failed: ${e.message}", e)
-                        return@withContext Result.failure(
+                        return Result.failure(
                             IllegalStateException(
                                 "FIREBASE_AUTH_FAILED: ไม่สามารถยืนยันตัวตนกับ Firebase Authentication ได้",
                                 e
