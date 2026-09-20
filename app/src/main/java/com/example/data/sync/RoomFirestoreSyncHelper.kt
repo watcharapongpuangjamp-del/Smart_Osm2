@@ -11,6 +11,7 @@ import com.example.data.PersonRepository
 import com.example.data.PersonStatus
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -107,6 +108,20 @@ open class RoomFirestoreSyncHelper(
         return firestoreProvider()
             ?: throw IllegalStateException("ระบบ Cloud (Firebase) ยังไม่ได้ตั้งค่าในโปรเจกต์นี้ กรุณาใช้งานฐานข้อมูลภายใน (Room) แทน")
     }
+
+    private fun requireAuthenticatedFirebaseUser() {
+        val user = try {
+            FirebaseAuth.getInstance().currentUser
+        } catch (e: Exception) {
+            null
+        }
+        if (user == null) {
+            throw IllegalStateException(
+                "FIREBASE_AUTH_REQUIRED: กรุณาเข้าสู่ระบบ Firebase ก่อนซิงค์ข้อมูล Cloud"
+            )
+        }
+    }
+
 
     private fun checkFirebaseConfiguredOrError(): FirebaseFirestore? {
         return try {
@@ -223,6 +238,7 @@ open class RoomFirestoreSyncHelper(
      */
     suspend fun syncRoomToFirestore(): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             _syncState.value = SyncState.Syncing("กำลังเตรียมข้อมูลจาก Room Database...")
             val firestore = checkFirebaseConfiguredOrError()
             if (firestore == null) {
@@ -388,6 +404,7 @@ open class RoomFirestoreSyncHelper(
         householdHouseNo: String = ""
     ): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             // Check if person has been tombstoned
             if (checkTombstoneExists(person.personUuid, "person")) {
                 return@withContext Result.failure(IllegalStateException("Cannot sync: Person ${person.personUuid} was deleted on Cloud."))
@@ -452,6 +469,7 @@ open class RoomFirestoreSyncHelper(
 
     suspend fun deleteHouseholdFromFirestore(householdUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             val firestore = getFirestore()
             val personDocs = firestore.collection(COLLECTION_PERSONS)
                 .whereEqualTo("householdUuid", householdUuid)
@@ -474,6 +492,7 @@ open class RoomFirestoreSyncHelper(
      */
     open suspend fun deletePersonFromFirestore(personUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             transactionalDelete(COLLECTION_PERSONS, personUuid, "person")
             Result.success(Unit)
         } catch (e: Exception) {
@@ -492,6 +511,7 @@ open class RoomFirestoreSyncHelper(
      */
     suspend fun syncFirestoreToRoom(): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             _syncState.value = SyncState.Syncing("กำลังดึงข้อมูลจาก Cloud Firestore...")
             val firestore = checkFirebaseConfiguredOrError()
             if (firestore == null) {
