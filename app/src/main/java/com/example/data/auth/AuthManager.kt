@@ -361,8 +361,13 @@ open class AuthManager(
             ) {
                 val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                 
-                // 3. Ensure Firebase Auth is ready if available
+                // 3. Firebase Authentication is mandatory for cloud identity.
                 val auth = ensureFirebase(context) ?: firebaseAuth
+                if (auth == null) {
+                    return@withContext Result.failure(
+                        IllegalStateException("FIREBASE_AUTH_UNAVAILABLE: Firebase Authentication ยังไม่พร้อมใช้งาน")
+                    )
+                }
                 var firebaseUser: FirebaseUser? = null
                 if (auth != null) {
                     try {
