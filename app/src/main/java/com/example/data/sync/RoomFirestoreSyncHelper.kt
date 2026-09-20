@@ -155,6 +155,38 @@ open class RoomFirestoreSyncHelper(
     private fun nextVersion(localVersion: Long, remoteVersion: Long?): Long =
         maxOf(localVersion, remoteVersion ?: 0L) + 1L
 
+    private suspend fun transactionalPersonSave(
+        person: Person,
+        householdUuid: String,
+        householdHouseNo: String
+    ) {
+        val firestore = getFirestore()
+        val ref = firestore.collection(COLLECTION_PERSONS).document(person.personUuid)
+        firestore.runTransaction { tx ->
+            val remote = tx.get(ref)
+            if (remote.exists() && !shouldUpload(localMetadata(person), remoteMetadata(remote))) {
+                throw IllegalStateException("Cloud มีข้อมูลบุคคลใหม่กว่า จึงไม่เขียนทับ")
+            }
+            tx.set(ref, personToVersionedMap(person, householdUuid, householdHouseNo, remote), SetOptions.merge())
+            null
+        }.await()
+    }
+
+    private suspend fun transactionalHouseholdSave(
+        household: Household
+    ) {
+        val firestore = getFirestore()
+        val ref = firestore.collection(COLLECTION_HOUSEHOLDS).document(household.householdUuid)
+        firestore.runTransaction { tx ->
+            val remote = tx.get(ref)
+            if (remote.exists() && !shouldUpload(localMetadata(household), remoteMetadata(remote))) {
+                throw IllegalStateException("Cloud มีข้อมูลครัวเรือนใหม่กว่า จึงไม่เขียนทับ")
+            }
+            tx.set(ref, householdToVersionedMap(household, remote), SetOptions.merge())
+            null
+        }.await()
+    }
+
     private fun householdToVersionedMap(
         household: Household,
         remote: DocumentSnapshot?
@@ -311,7 +343,8 @@ open class RoomFirestoreSyncHelper(
             if (remoteHousehold.exists() && !shouldUpload(localMetadata(household), remoteMetadata(remoteHousehold))) {
                 return@withContext Result.failure(IllegalStateException("Cloud มีข้อมูลครัวเรือนใหม่กว่า จึงไม่เขียนทับ"))
             }
-            batch.set(hRef, householdToVersionedMap(household, remoteHousehold), SetOptions.merge())
+            val householdData = householdToVersionedMap(household, remoteHousehold)
+            batch.set(hRef, householdData, SetOptions.merge())
 
             for (p in validPersons) {
                 val pRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
@@ -343,12 +376,7 @@ open class RoomFirestoreSyncHelper(
 
     @androidx.annotation.VisibleForTesting
     internal open suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
-        val pRef = getFirestore().collection(COLLECTION_PERSONS).document(person.personUuid)
-        val remote = pRef.get().await()
-        if (remote.exists() && !shouldUpload(localMetadata(person), remoteMetadata(remote))) {
-            throw IllegalStateException("Cloud มีข้อมูลบุคคลใหม่กว่า จึงไม่เขียนทับ")
-        }
-        pRef.set(personToVersionedMap(person, householdUuid, householdHouseNo, remote), SetOptions.merge()).await()
+        transactionalPersonSave(person, householdUuid, householdHouseNo)
     }
 
     /**
