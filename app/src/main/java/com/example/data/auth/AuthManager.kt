@@ -370,9 +370,15 @@ open class AuthManager(
                         val authResult = auth.signInWithCredential(authCredential).await()
                         firebaseUser = authResult.user
                     } catch (e: Exception) {
-                        Log.w(TAG, "Firebase credential exchange skipped or offline: ${e.message}")
+                        Log.e(TAG, "Firebase credential exchange failed: ${e.message}", e)
+                        return@withContext Result.failure(
+                            IllegalStateException(
+                                "FIREBASE_AUTH_FAILED: ไม่สามารถยืนยันตัวตนกับ Firebase Authentication ได้",
+                                e
+                            )
+                        )
                     }
-                }
+                }                }
 
                 val userEmail = googleIdTokenCredential.id
                 val displayName = googleIdTokenCredential.displayName ?: userEmail.substringBefore("@")
