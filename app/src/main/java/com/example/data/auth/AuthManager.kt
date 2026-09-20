@@ -11,8 +11,6 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
-import androidx.credentials.exceptions.NoCredentialException
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
@@ -355,10 +353,10 @@ open class AuthManager(
                 activityContext
             }
 
-            // Use the standard bottom-sheet flow first. If Google reports that
-            // no matching credential is available, fall back to the explicit
-            // "Sign in with Google" button flow, which also supports accounts
-            // that need re-authentication.
+            // This screen has an explicit "Sign in with Google" button.
+            // Use the Sign-in-with-Google button flow directly because it is
+            // specifically designed for accounts that require re-authentication.
+            // See Android Credential Manager guidance for the button flow.
             val credentialManager = CredentialManager.create(context)
             val nonceBytes = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
             val nonce = Base64.encodeToString(
@@ -366,40 +364,20 @@ open class AuthManager(
                 Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING
             )
 
-            val googleIdOption = GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(false)
-                .setServerClientId(clientId)
-                .setAutoSelectEnabled(false)
+            val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
+                serverClientId = clientId
+            )
                 .setNonce(nonce)
                 .build()
 
-            val bottomSheetRequest = GetCredentialRequest.Builder()
-                .addCredentialOption(googleIdOption)
+            val request = GetCredentialRequest.Builder()
+                .addCredentialOption(signInWithGoogleOption)
                 .build()
 
-            val response = try {
-                credentialManager.getCredential(
-                    request = bottomSheetRequest,
-                    context = credentialUiContext
-                )
-            } catch (e: NoCredentialException) {
-                Log.w(TAG, "No Google credential in bottom sheet; falling back to explicit Google sign-in", e)
-
-                val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
-                    serverClientId = clientId
-                )
-                    .setNonce(nonce)
-                    .build()
-
-                val buttonRequest = GetCredentialRequest.Builder()
-                    .addCredentialOption(signInWithGoogleOption)
-                    .build()
-
-                credentialManager.getCredential(
-                    request = buttonRequest,
-                    context = credentialUiContext
-                )
-            }
+            val response = credentialManager.getCredential(
+                request = request,
+                context = credentialUiContext
+            )
 
             val credential = response.credential
             if (credential is CustomCredential &&
