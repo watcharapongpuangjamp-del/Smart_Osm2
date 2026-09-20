@@ -474,16 +474,7 @@ open class RoomFirestoreSyncHelper(
      */
     open suspend fun deletePersonFromFirestore(personUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val firestore = getFirestore()
-            val batch = firestore.batch()
-
-            val pRef = firestore.collection(COLLECTION_PERSONS).document(personUuid)
-            batch.delete(pRef)
-
-            val pTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("person_$personUuid")
-            batch.set(pTombstoneRef, mapOf("uuid" to personUuid, "type" to "person", "deletedAt" to System.currentTimeMillis()))
-
-            batch.commit().await()
+            transactionalDelete(COLLECTION_PERSONS, personUuid, "person")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete person $personUuid from Firestore", e)
