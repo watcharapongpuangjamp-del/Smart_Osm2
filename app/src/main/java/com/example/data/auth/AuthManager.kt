@@ -315,7 +315,7 @@ open class AuthManager(
         context: Context,
         customWebClientId: String? = null
     ): Result<UserProfile> {
-        try {
+        return try {
             // 1. Resolve Web Client ID from params, saved preferences, or generated strings.xml
             val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
             if (!customWebClientId.isNullOrBlank()) {
