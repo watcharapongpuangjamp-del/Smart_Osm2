@@ -733,6 +733,11 @@ open class RoomFirestoreSyncHelper(
         } ?: DataStatus.NEEDS_REVIEW
 
         val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+        val serverUpdatedAt = doc.getLong("serverUpdatedAt")
+        val version = doc.getLong("version") ?: 0L
+        val updatedBy = doc.getString("updatedBy")
+        val updatedFrom = doc.getString("updatedFrom")
+        val isDeleted = doc.getBoolean("isDeleted") == true
 
         return Person(
             id = 0,
