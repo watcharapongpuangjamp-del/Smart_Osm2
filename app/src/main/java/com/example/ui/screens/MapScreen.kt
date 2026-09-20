@@ -46,11 +46,27 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
+import org.osmdroid.tileprovider.tilesource.ITileSource
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+
+enum class MapLayerType(val title: String, val subtitle: String) {
+    STANDARD_2D("แผนที่มาตรฐาน (2D)", "เส้นทาง คลอง และชื่อสถานที่คมชัด"),
+    SATELLITE("ภาพถ่ายดาวเทียม (เห็นหลังคาบ้าน)", "Esri World Imagery เห็นตัวบ้านและหลังคาจริง"),
+    TERRAIN_3D("ภูมิประเทศ 3D / Relief", "OpenTopoMap ระดับความสูง ภูเขา แม่น้ำ ลาดชัน"),
+    HYBRID_SATELLITE("ดาวเทียม + เส้นทาง (Hybrid)", "Google Hybrid มองเห็นสิ่งปลูกสร้างพร้อมถนน")
+}
+
+enum class MarkerStyle(val title: String) {
+    PIN_3D_HOUSE("หมุด 3D ทรงบ้านเรือน"),
+    BADGE_2D("หมุด 2D สัญลักษณ์ประชากร")
+}
 
 enum class PopulationFilter(val label: String) {
     ALL("ทั้งหมด"),
@@ -58,6 +74,53 @@ enum class PopulationFilter(val label: String) {
     ELDERLY("มีผู้สูงอายุ (60+)"),
     CHILDREN("มีเด็กเล็ก (0-12)"),
     LOW_DENSITY("1-2 คน")
+}
+
+// Custom Tile Sources for Satellite, Terrain 3D, and Google Hybrid
+val ESRI_SATELLITE_TILE_SOURCE: ITileSource = object : OnlineTileSourceBase(
+    "EsriSatellite",
+    0,
+    19,
+    256,
+    ".jpg",
+    arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String {
+        val zoom = MapTileIndex.getZoom(pMapTileIndex)
+        val x = MapTileIndex.getX(pMapTileIndex)
+        val y = MapTileIndex.getY(pMapTileIndex)
+        return "$baseUrl$zoom/$y/$x$mImageFilenameEnding"
+    }
+}
+
+val OPENTOPO_TERRAIN_TILE_SOURCE: ITileSource = XYTileSource(
+    "OpenTopoMap",
+    0,
+    17,
+    256,
+    ".png",
+    arrayOf(
+        "https://a.tile.opentopomap.org/",
+        "https://b.tile.opentopomap.org/",
+        "https://c.tile.opentopomap.org/"
+    ),
+    "© OpenTopoMap, © OpenStreetMap contributors"
+)
+
+val GOOGLE_HYBRID_TILE_SOURCE: ITileSource = object : OnlineTileSourceBase(
+    "GoogleHybrid",
+    0,
+    20,
+    256,
+    "",
+    arrayOf("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}")
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String {
+        val zoom = MapTileIndex.getZoom(pMapTileIndex)
+        val x = MapTileIndex.getX(pMapTileIndex)
+        val y = MapTileIndex.getY(pMapTileIndex)
+        return "https://mt1.google.com/vt/lyrs=y&x=$x&y=$y&z=$zoom"
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
@@ -80,6 +143,11 @@ fun MapScreen(
     var searchQuery by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf(PopulationFilter.ALL) }
     var showStatsPanel by remember { mutableStateOf(false) }
+
+    // Map Layer and House Marker Style State
+    var selectedMapLayer by remember { mutableStateOf(MapLayerType.STANDARD_2D) }
+    var selectedMarkerStyle by remember { mutableStateOf(MarkerStyle.PIN_3D_HOUSE) }
+    var showLayerMenu by remember { mutableStateOf(false) }
 
     // Pinning state
     var isPinningMode by remember { mutableStateOf(false) }
@@ -165,6 +233,14 @@ fun MapScreen(
                     }
                 },
                 actions = {
+                    // Toggle map layer & visual perspective dialog (2D, 3D Terrain, Satellite, House markers)
+                    IconButton(onClick = { showLayerMenu = true }) {
+                        Icon(
+                            Icons.Filled.Layers,
+                            contentDescription = "รูปแบบแผนที่ 3D/2D",
+                            tint = Color.White
+                        )
+                    }
                     // Toggle population distribution statistics card
                     IconButton(onClick = { showStatsPanel = !showStatsPanel }) {
                         Icon(
@@ -216,7 +292,13 @@ fun MapScreen(
                     config.load(ctx, PreferenceManager.getDefaultSharedPreferences(ctx))
                     config.userAgentValue = ctx.packageName
                     MapView(ctx).apply {
-                        setTileSource(TileSourceFactory.MAPNIK)
+                        val tileSource = when (selectedMapLayer) {
+                            MapLayerType.STANDARD_2D -> TileSourceFactory.MAPNIK
+                            MapLayerType.SATELLITE -> ESRI_SATELLITE_TILE_SOURCE
+                            MapLayerType.TERRAIN_3D -> OPENTOPO_TERRAIN_TILE_SOURCE
+                            MapLayerType.HYBRID_SATELLITE -> GOOGLE_HYBRID_TILE_SOURCE
+                        }
+                        setTileSource(tileSource)
                         setMultiTouchControls(true)
                         controller.setZoom(16.0)
                         controller.setCenter(GeoPoint(initialLat, initialLon))
@@ -225,6 +307,17 @@ fun MapScreen(
                 },
                 update = { mapView ->
                     mapViewRef = mapView
+                    
+                    val desiredTileSource = when (selectedMapLayer) {
+                        MapLayerType.STANDARD_2D -> TileSourceFactory.MAPNIK
+                        MapLayerType.SATELLITE -> ESRI_SATELLITE_TILE_SOURCE
+                        MapLayerType.TERRAIN_3D -> OPENTOPO_TERRAIN_TILE_SOURCE
+                        MapLayerType.HYBRID_SATELLITE -> GOOGLE_HYBRID_TILE_SOURCE
+                    }
+                    if (mapView.tileProvider.tileSource.name() != desiredTileSource.name()) {
+                        mapView.setTileSource(desiredTileSource)
+                    }
+
                     mapView.overlays.removeAll { it is Marker || it is MapEventsOverlay }
 
                     // Add Touch Events Overlay for interactive map tapping and long press
@@ -261,7 +354,8 @@ fun MapScreen(
                                 totalMembers = house.totalMembers,
                                 hasElderly = house.elderly > 0,
                                 hasChildren = house.children > 0,
-                                isSelected = selectedHouse?.householdId == house.householdId
+                                isSelected = selectedHouse?.householdId == house.householdId,
+                                markerStyle = selectedMarkerStyle
                             )
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                         }
@@ -542,6 +636,17 @@ fun MapScreen(
                     .padding(end = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Map Layers and 3D Terrain Switcher FAB
+                FloatingActionButton(
+                    onClick = { showLayerMenu = true },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = EmeraldPrimary,
+                    shape = CircleShape,
+                    modifier = Modifier.size(44.dp).shadow(4.dp, CircleShape)
+                ) {
+                    Icon(Icons.Filled.Layers, contentDescription = "เปลี่ยนรูปแบบแผนที่ 3D/2D", modifier = Modifier.size(20.dp))
+                }
+
                 // Zoom In
                 FloatingActionButton(
                     onClick = { mapViewRef?.controller?.zoomIn() },
@@ -990,6 +1095,190 @@ fun MapScreen(
             }
         )
     }
+
+    // Dialog: Map Layer & Visual Perspective Selection
+    if (showLayerMenu) {
+        MapLayerSelectionDialog(
+            currentLayer = selectedMapLayer,
+            currentMarkerStyle = selectedMarkerStyle,
+            onSelectLayer = { selectedMapLayer = it },
+            onSelectMarkerStyle = { selectedMarkerStyle = it },
+            onDismiss = { showLayerMenu = false }
+        )
+    }
+}
+
+@Composable
+fun MapLayerSelectionDialog(
+    currentLayer: MapLayerType,
+    currentMarkerStyle: MarkerStyle,
+    onSelectLayer: (MapLayerType) -> Unit,
+    onSelectMarkerStyle: (MarkerStyle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(EmeraldPrimary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Layers, contentDescription = null, tint = EmeraldPrimary, modifier = Modifier.size(24.dp))
+                        }
+                        Column {
+                            Text("รูปแบบมุมมองแผนที่", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("เลือกแผนที่ 2D, 3D ภูมิประเทศ หรือดาวเทียม", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "ปิด")
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Text("ชั้นข้อมูลแผนที่ (Map Layers)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = EmeraldPrimary)
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MapLayerType.values().forEach { layer ->
+                        val isSelected = layer == currentLayer
+                        val layerIcon = when (layer) {
+                            MapLayerType.STANDARD_2D -> Icons.Filled.Map
+                            MapLayerType.SATELLITE -> Icons.Filled.SatelliteAlt
+                            MapLayerType.TERRAIN_3D -> Icons.Filled.Terrain
+                            MapLayerType.HYBRID_SATELLITE -> Icons.Filled.Public
+                        }
+
+                        Surface(
+                            onClick = { onSelectLayer(layer) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) EmeraldPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(
+                                width = if (isSelected) 1.8.dp else 1.dp,
+                                color = if (isSelected) EmeraldPrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) EmeraldPrimary else MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        layerIcon,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        layer.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                        color = if (isSelected) EmeraldPrimary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        layer.subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { onSelectLayer(layer) },
+                                    colors = RadioButtonDefaults.colors(selectedColor = EmeraldPrimary)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Text("รูปแบบหมุดบ้านเรือน (Building Marker)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = EmeraldPrimary)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    MarkerStyle.values().forEach { style ->
+                        val isSelected = style == currentMarkerStyle
+                        Surface(
+                            onClick = { onSelectMarkerStyle(style) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) EmeraldPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) EmeraldPrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    if (style == MarkerStyle.PIN_3D_HOUSE) Icons.Filled.Home else Icons.Filled.LocationOn,
+                                    contentDescription = null,
+                                    tint = if (isSelected) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    style.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) EmeraldPrimary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
+                ) {
+                    Text("ตกลง / ปิดหน้าต่าง", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1295,11 +1584,12 @@ fun createHouseholdMarkerDrawable(
     totalMembers: Int,
     hasElderly: Boolean,
     hasChildren: Boolean,
-    isSelected: Boolean
+    isSelected: Boolean,
+    markerStyle: MarkerStyle = MarkerStyle.PIN_3D_HOUSE
 ): Drawable {
     val density = context.resources.displayMetrics.density
-    val width = (42 * density).toInt()
-    val height = (50 * density).toInt()
+    val width = (44 * density).toInt()
+    val height = (54 * density).toInt()
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
 
@@ -1307,7 +1597,7 @@ fun createHouseholdMarkerDrawable(
 
     // Color based on population density and vulnerability
     val pinColor = when {
-        isSelected -> android.graphics.Color.rgb(16, 185, 129)
+        isSelected -> android.graphics.Color.rgb(16, 185, 129) // Emerald
         hasElderly -> android.graphics.Color.rgb(124, 58, 237) // Purple for Elderly
         totalMembers >= 4 -> android.graphics.Color.rgb(234, 88, 12) // Orange for High Density
         hasChildren -> android.graphics.Color.rgb(2, 132, 199) // Sky Blue for Children
@@ -1316,63 +1606,131 @@ fun createHouseholdMarkerDrawable(
 
     // Shadow
     val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.argb(50, 0, 0, 0)
+        color = android.graphics.Color.argb(55, 0, 0, 0)
     }
-    val shadowRadius = 15 * density
-    canvas.drawCircle(width / 2f, 18 * density, shadowRadius + (2 * density), shadowPaint)
+    val shadowRadius = 16 * density
+    canvas.drawCircle(width / 2f, 19 * density, shadowRadius + (2 * density), shadowPaint)
 
-    // Pin shape
-    val path = Path()
-    val circleCenterY = 18 * density
-    val circleRadius = 15 * density
+    if (markerStyle == MarkerStyle.PIN_3D_HOUSE) {
+        // 3D House Roof + Body Pin Style
+        val path = Path()
+        val circleCenterY = 20 * density
+        val circleRadius = 16 * density
 
-    path.addCircle(width / 2f, circleCenterY, circleRadius, Path.Direction.CW)
-    val trianglePath = Path().apply {
-        moveTo((width / 2f) - (8 * density), circleCenterY + (9 * density))
-        lineTo(width / 2f, height - (2 * density))
-        lineTo((width / 2f) + (8 * density), circleCenterY + (9 * density))
-        close()
+        // Roof Top Triangle (3D House effect)
+        path.moveTo(width / 2f, 2 * density) // Roof peak
+        path.lineTo(width - (4 * density), 16 * density) // Right roof eave
+        path.lineTo(width - (6 * density), circleCenterY + (10 * density)) // House base right
+        path.lineTo(width / 2f, height - (2 * density)) // Bottom pin needle
+        path.lineTo(6 * density, circleCenterY + (10 * density)) // House base left
+        path.lineTo(4 * density, 16 * density) // Left roof eave
+        path.close()
+
+        paint.color = pinColor
+        paint.style = Paint.Style.FILL
+        canvas.drawPath(path, paint)
+
+        // 3D Isometric Roof Shading (Left side brighter, Right side darker)
+        val roofShadeLeft = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(45, 255, 255, 255)
+            style = Paint.Style.FILL
+        }
+        val leftRoofPath = Path().apply {
+            moveTo(width / 2f, 2 * density)
+            lineTo(4 * density, 16 * density)
+            lineTo(width / 2f, 16 * density)
+            close()
+        }
+        canvas.drawPath(leftRoofPath, roofShadeLeft)
+
+        val roofShadeRight = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(40, 0, 0, 0)
+            style = Paint.Style.FILL
+        }
+        val rightRoofPath = Path().apply {
+            moveTo(width / 2f, 2 * density)
+            lineTo(width - (4 * density), 16 * density)
+            lineTo(width / 2f, 16 * density)
+            close()
+        }
+        canvas.drawPath(rightRoofPath, roofShadeRight)
+
+        // Outer crisp white stroke
+        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f * density
+        }
+        canvas.drawPath(path, strokePaint)
+
+        // Text (Number of population members)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textSize = 12 * density
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val text = if (totalMembers > 99) "99+" else "$totalMembers"
+        val textBounds = Rect()
+        textPaint.getTextBounds(text, 0, text.length, textBounds)
+        val textY = circleCenterY + (4 * density) + (textBounds.height() / 2f)
+        canvas.drawText(text, width / 2f, textY, textPaint)
+
+    } else {
+        // Standard Classic 2D Round Pin
+        val path = Path()
+        val circleCenterY = 18 * density
+        val circleRadius = 15 * density
+
+        path.addCircle(width / 2f, circleCenterY, circleRadius, Path.Direction.CW)
+        val trianglePath = Path().apply {
+            moveTo((width / 2f) - (8 * density), circleCenterY + (9 * density))
+            lineTo(width / 2f, height - (2 * density))
+            lineTo((width / 2f) + (8 * density), circleCenterY + (9 * density))
+            close()
+        }
+        path.op(trianglePath, Path.Op.UNION)
+
+        paint.color = pinColor
+        paint.style = Paint.Style.FILL
+        canvas.drawPath(path, paint)
+
+        // White border
+        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f * density
+        }
+        canvas.drawPath(path, strokePaint)
+
+        // Text (Number of population members)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textSize = 12 * density
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val text = if (totalMembers > 99) "99+" else "$totalMembers"
+        val textBounds = Rect()
+        textPaint.getTextBounds(text, 0, text.length, textBounds)
+        val textY = circleCenterY + (textBounds.height() / 2f)
+        canvas.drawText(text, width / 2f, textY, textPaint)
     }
-    path.op(trianglePath, Path.Op.UNION)
-
-    paint.color = pinColor
-    paint.style = Paint.Style.FILL
-    canvas.drawPath(path, paint)
-
-    // White border
-    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = 2.5f * density
-    }
-    canvas.drawPath(path, strokePaint)
-
-    // Text (Number of population members)
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.WHITE
-        textSize = 12 * density
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textAlign = Paint.Align.CENTER
-    }
-    val text = if (totalMembers > 99) "99+" else "$totalMembers"
-    val textBounds = Rect()
-    textPaint.getTextBounds(text, 0, text.length, textBounds)
-    val textY = circleCenterY + (textBounds.height() / 2f)
-    canvas.drawText(text, width / 2f, textY, textPaint)
 
     // Elderly indicator badge dot
     if (hasElderly) {
+        val badgeCenterY = if (markerStyle == MarkerStyle.PIN_3D_HOUSE) 10 * density else 8 * density
         val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.rgb(251, 191, 36)
+            color = android.graphics.Color.rgb(251, 191, 36) // Amber/Gold
             style = Paint.Style.FILL
         }
-        canvas.drawCircle((width / 2f) + (10 * density), circleCenterY - (10 * density), 4.5f * density, badgePaint)
+        canvas.drawCircle((width / 2f) + (11 * density), badgeCenterY, 4.5f * density, badgePaint)
         val badgeBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
             style = Paint.Style.STROKE
             strokeWidth = 1.5f * density
         }
-        canvas.drawCircle((width / 2f) + (10 * density), circleCenterY - (10 * density), 4.5f * density, badgeBorder)
+        canvas.drawCircle((width / 2f) + (11 * density), badgeCenterY, 4.5f * density, badgeBorder)
     }
 
     return BitmapDrawable(context.resources, bitmap)
