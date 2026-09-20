@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 sealed interface AuthUiState {
     object Idle : AuthUiState
     data class Loading(val message: String) : AuthUiState
-    data class Success(val user: FirebaseUser, val message: String) : AuthUiState
+    data class Success(val user: Any?, val message: String) : AuthUiState
     data class Error(val message: String, val throwable: Throwable? = null) : AuthUiState
 }
 
@@ -36,6 +36,19 @@ class AuthViewModel(
 
     fun resetState() {
         _uiState.value = AuthUiState.Idle
+    }
+
+    fun signInWithGoogleTest(context: Context, email: String = "gigatvthai@gmail.com") {
+        _uiState.value = AuthUiState.Loading("กำลังเข้าสู่ระบบบัญชีทดสอบ Google...")
+        val result = authManager.signInWithGoogleTest(context, email)
+        result.fold(
+            onSuccess = { profile ->
+                _uiState.value = AuthUiState.Success(profile, "เข้าสู่ระบบบัญชี Google ทดสอบสำเร็จ")
+            },
+            onFailure = { error ->
+                _uiState.value = AuthUiState.Error(error.message ?: "เข้าสู่ระบบทดสอบไม่สำเร็จ", error)
+            }
+        )
     }
 
     fun signInWithGoogle(context: Context, customClientId: String? = null) {
@@ -129,8 +142,8 @@ class AuthViewModel(
         }
     }
 
-    fun signOut() {
-        authManager.signOut()
+    fun signOut(context: Context? = null) {
+        authManager.signOut(context)
         _uiState.value = AuthUiState.Idle
     }
 

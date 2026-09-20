@@ -38,6 +38,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import com.example.data.auth.UserProfile
+import com.google.firebase.auth.FirebaseUser
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -108,8 +110,18 @@ fun LoginScreen(
             is AuthUiState.Success -> {
                 val isSetupDone = prefs.getBoolean("surveyor_setup_completed", false)
                 if (!isSetupDone) {
-                    surveyorNameInput = state.user.displayName ?: ""
-                    surveyorPhoneInput = state.user.phoneNumber ?: ""
+                    val userDisplayName = when (val u = state.user) {
+                        is FirebaseUser -> u.displayName
+                        is UserProfile -> u.displayName
+                        else -> null
+                    }
+                    val userPhone = when (val u = state.user) {
+                        is FirebaseUser -> u.phoneNumber
+                        is UserProfile -> u.phoneNumber
+                        else -> null
+                    }
+                    surveyorNameInput = userDisplayName ?: ""
+                    surveyorPhoneInput = userPhone ?: ""
                     showAreaSetupDialog = true
                 } else {
                     onLoginSuccess()
@@ -937,17 +949,29 @@ fun LoginScreen(
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        if (inputClientId.isNotBlank()) {
-                            authViewModel.saveWebClientId(context, inputClientId)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
                             showMissingClientIdDialog = false
-                            authViewModel.signInWithGoogle(context, inputClientId)
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
-                ) {
-                    Text("บันทึกและเชื่อมต่อ")
+                            authViewModel.signInWithGoogleTest(context)
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("ทดสอบทันที (Dev Test)")
+                    }
+                    Button(
+                        onClick = {
+                            if (inputClientId.isNotBlank()) {
+                                authViewModel.saveWebClientId(context, inputClientId)
+                                showMissingClientIdDialog = false
+                                authViewModel.signInWithGoogle(context, inputClientId)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("บันทึกและเชื่อมต่อ")
+                    }
                 }
             },
             dismissButton = {
