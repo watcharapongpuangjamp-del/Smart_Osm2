@@ -119,6 +119,39 @@ open class RoomFirestoreSyncHelper(
     // =========================================================================
     // ROOM -> FIRESTORE (Upload / Persist)
     // =========================================================================
+    private fun remoteMetadata(doc: DocumentSnapshot): SyncMetadata = SyncMetadata(
+        lastModified = doc.getLong("updatedAt") ?: 0L,
+        serverUpdatedAt = doc.getLong("serverUpdatedAt"),
+        version = doc.getLong("version") ?: 0L,
+        updatedBy = doc.getString("updatedBy"),
+        updatedFrom = doc.getString("updatedFrom"),
+        isDeleted = doc.getBoolean("isDeleted") == true
+    )
+
+    private fun localMetadata(household: Household): SyncMetadata = SyncMetadata(
+        lastModified = household.lastModified,
+        serverUpdatedAt = household.serverUpdatedAt,
+        version = household.version,
+        updatedBy = household.updatedBy,
+        updatedFrom = household.updatedFrom,
+        isDeleted = household.isDeleted
+    )
+
+    private fun localMetadata(person: Person): SyncMetadata = SyncMetadata(
+        lastModified = person.lastModified,
+        serverUpdatedAt = person.serverUpdatedAt,
+        version = person.version,
+        updatedBy = person.updatedBy,
+        updatedFrom = person.updatedFrom,
+        isDeleted = person.isDeleted
+    )
+
+    private fun shouldUpload(local: SyncMetadata, remote: SyncMetadata): Boolean =
+        ConflictResolver.decide(remote, local) == ConflictResolver.Decision.ACCEPT_REMOTE
+
+    private fun shouldAcceptRemote(local: SyncMetadata, remote: SyncMetadata): Boolean =
+        ConflictResolver.decide(local, remote) == ConflictResolver.Decision.ACCEPT_REMOTE
+
 
     /**
      * Uploads all local Room households and registered citizens to Cloud Firestore,
@@ -142,7 +175,10 @@ open class RoomFirestoreSyncHelper(
             val households = repository.getAllHouseholds().filter { !deletedUuids.contains(it.householdUuid) }
             val persons = repository.getAllPersonsList().filter { !deletedUuids.contains(it.personUuid) }
 
-            _syncState.value = SyncState.Syncing("กำลังส่งข้อมูล ${households.size} ครัวเรือน และ ${persons.size} คน ไปยัง Firestore...")
+            val cloudHouseholds = firestore.collection(COLLECTION_HOUSEHOLDS).get().await().documents.associateBy { it.id }
+            val cloudPersons = firestore.collection(COLLECTION_PERSONS).get().await().documents.associateBy { it.id }
+
+            _syncState.value = SyncState.Syncing("กำลังตรวจสอบเวอร์ชันข้อมูลก่อนส่งขึ้น Firestore...")
 
             val householdMap = households.associateBy { it.id }
 
@@ -153,6 +189,8 @@ open class RoomFirestoreSyncHelper(
             var personsSynced = 0
 
             for (h in households) {
+                val remote = cloudHouseholds[h.householdUuid]
+                if (remote != null && !shouldUpload(localMetadata(h), remoteMetadata(remote))) continue
                 val docRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(h.householdUuid)
                 val data = householdToMap(h)
                 batch.set(docRef, data, SetOptions.merge())
@@ -168,6 +206,8 @@ open class RoomFirestoreSyncHelper(
 
             for (p in persons) {
                 val parentHousehold = householdMap[p.householdId] ?: continue
+                val remote = cloudPersons[p.personUuid]
+                if (remote != null && !shouldUpload(localMetadata(p), remoteMetadata(remote))) continue
                 val docRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
                 val data = personToMap(p, parentHousehold.householdUuid, parentHousehold.houseNo)
                 batch.set(docRef, data, SetOptions.merge())
@@ -442,12 +482,14 @@ open class RoomFirestoreSyncHelper(
                 val existing = repository.getHouseholdByUuid(household.householdUuid)
 
                 if (existing != null) {
-                    val updated = household.copy(id = existing.id)
-                    repository.updateHousehold(updated)
+                    if (shouldAcceptRemote(localMetadata(existing), localMetadata(household))) {
+                        repository.updateHousehold(household.copy(id = existing.id))
+                        householdsImported++
+                    }
                 } else {
                     repository.insertHousehold(household.copy(id = 0))
+                    householdsImported++
                 }
-                householdsImported++
             }
 
             // 2. Process Persons (Strict UUID matching & Tombstone filtering)
@@ -472,12 +514,14 @@ open class RoomFirestoreSyncHelper(
                 val existing = repository.getPersonByUuid(person.personUuid)
 
                 if (existing != null) {
-                    val updated = person.copy(id = existing.id, householdId = localHousehold.id)
-                    repository.update(updated)
+                    if (shouldAcceptRemote(localMetadata(existing), localMetadata(person))) {
+                        repository.update(person.copy(id = existing.id, householdId = localHousehold.id))
+                        personsImported++
+                    }
                 } else {
                     repository.insert(person.copy(id = 0, householdId = localHousehold.id))
+                    personsImported++
                 }
-                personsImported++
             }
 
             val result = SyncResult(
@@ -531,7 +575,12 @@ open class RoomFirestoreSyncHelper(
             "locationCapturedAt" to household.locationCapturedAt,
             "locationProvider" to household.locationProvider,
             "dataStatus" to household.dataStatus.name,
-            "updatedAt" to household.lastModified
+            "updatedAt" to household.lastModified,
+            "serverUpdatedAt" to (household.serverUpdatedAt ?: household.lastModified),
+            "version" to household.version,
+            "updatedBy" to household.updatedBy,
+            "updatedFrom" to (household.updatedFrom ?: "android"),
+            "isDeleted" to household.isDeleted
         )
     }
 
@@ -548,7 +597,12 @@ open class RoomFirestoreSyncHelper(
             "houseStatus" to person.houseStatus.name,
             "personStatus" to person.personStatus.name,
             "dataStatus" to person.dataStatus.name,
-            "updatedAt" to person.lastModified
+            "updatedAt" to person.lastModified,
+            "serverUpdatedAt" to (person.serverUpdatedAt ?: person.lastModified),
+            "version" to person.version,
+            "updatedBy" to person.updatedBy,
+            "updatedFrom" to (person.updatedFrom ?: "android"),
+            "isDeleted" to person.isDeleted
         )
     }
 
@@ -568,6 +622,11 @@ open class RoomFirestoreSyncHelper(
         } ?: DataStatus.NEEDS_REVIEW
 
         val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+        val serverUpdatedAt = doc.getLong("serverUpdatedAt")
+        val version = doc.getLong("version") ?: 0L
+        val updatedBy = doc.getString("updatedBy")
+        val updatedFrom = doc.getString("updatedFrom")
+        val isDeleted = doc.getBoolean("isDeleted") == true
 
         return Household(
             id = 0,
@@ -583,7 +642,12 @@ open class RoomFirestoreSyncHelper(
             locationCapturedAt = capturedAt,
             locationProvider = provider,
             dataStatus = dataStatus,
-            lastModified = updatedAt
+            lastModified = updatedAt,
+            serverUpdatedAt = serverUpdatedAt,
+            version = version,
+            updatedBy = updatedBy,
+            updatedFrom = updatedFrom,
+            isDeleted = isDeleted
         )
     }
 
@@ -632,7 +696,12 @@ open class RoomFirestoreSyncHelper(
             houseStatus = houseStatus,
             personStatus = personStatus,
             dataStatus = dataStatus,
-            lastModified = updatedAt
+            lastModified = updatedAt,
+            serverUpdatedAt = serverUpdatedAt,
+            version = version,
+            updatedBy = updatedBy,
+            updatedFrom = updatedFrom,
+            isDeleted = isDeleted
         )
     }
 }
