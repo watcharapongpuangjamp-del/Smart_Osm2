@@ -11,6 +11,7 @@ import com.example.data.PersonRepository
 import com.example.data.PersonStatus
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -108,6 +109,20 @@ open class RoomFirestoreSyncHelper(
             ?: throw IllegalStateException("ระบบ Cloud (Firebase) ยังไม่ได้ตั้งค่าในโปรเจกต์นี้ กรุณาใช้งานฐานข้อมูลภายใน (Room) แทน")
     }
 
+    private fun requireAuthenticatedFirebaseUser() {
+        val user = try {
+            FirebaseAuth.getInstance().currentUser
+        } catch (e: Exception) {
+            null
+        }
+        if (user == null) {
+            throw IllegalStateException(
+                "FIREBASE_AUTH_REQUIRED: กรุณาเข้าสู่ระบบ Firebase ก่อนซิงค์ข้อมูล Cloud"
+            )
+        }
+    }
+
+
     private fun checkFirebaseConfiguredOrError(): FirebaseFirestore? {
         return try {
             firestoreProvider()
@@ -119,6 +134,102 @@ open class RoomFirestoreSyncHelper(
     // =========================================================================
     // ROOM -> FIRESTORE (Upload / Persist)
     // =========================================================================
+    private fun remoteMetadata(doc: DocumentSnapshot): SyncMetadata = SyncMetadata(
+        lastModified = doc.getLong("updatedAt") ?: 0L,
+        serverUpdatedAt = doc.getLong("serverUpdatedAt"),
+        version = doc.getLong("version") ?: 0L,
+        updatedBy = doc.getString("updatedBy"),
+        updatedFrom = doc.getString("updatedFrom"),
+        isDeleted = doc.getBoolean("isDeleted") == true
+    )
+
+    private fun localMetadata(household: Household): SyncMetadata = SyncMetadata(
+        lastModified = household.lastModified,
+        serverUpdatedAt = household.serverUpdatedAt,
+        version = household.version,
+        updatedBy = household.updatedBy,
+        updatedFrom = household.updatedFrom,
+        isDeleted = household.isDeleted
+    )
+
+    private fun localMetadata(person: Person): SyncMetadata = SyncMetadata(
+        lastModified = person.lastModified,
+        serverUpdatedAt = person.serverUpdatedAt,
+        version = person.version,
+        updatedBy = person.updatedBy,
+        updatedFrom = person.updatedFrom,
+        isDeleted = person.isDeleted
+    )
+
+    private fun shouldUpload(local: SyncMetadata, remote: SyncMetadata): Boolean =
+        ConflictResolver.decide(remote, local) == ConflictResolver.Decision.ACCEPT_REMOTE
+
+    private fun shouldAcceptRemote(local: SyncMetadata, remote: SyncMetadata): Boolean =
+        ConflictResolver.decide(local, remote) == ConflictResolver.Decision.ACCEPT_REMOTE
+
+    private fun nextVersion(localVersion: Long, remoteVersion: Long?): Long =
+        maxOf(localVersion, remoteVersion ?: 0L) + 1L
+
+    private suspend fun transactionalPersonSave(
+        person: Person,
+        householdUuid: String,
+        householdHouseNo: String
+    ) {
+        val firestore = getFirestore()
+        val ref = firestore.collection(COLLECTION_PERSONS).document(person.personUuid)
+        firestore.runTransaction { tx ->
+            val remote = tx.get(ref)
+            if (remote.exists() && !shouldUpload(localMetadata(person), remoteMetadata(remote))) {
+                throw IllegalStateException("Cloud มีข้อมูลบุคคลใหม่กว่า จึงไม่เขียนทับ")
+            }
+            tx.set(ref, personToVersionedMap(person, householdUuid, householdHouseNo, remote), SetOptions.merge())
+            null
+        }.await()
+    }
+
+    private suspend fun transactionalHouseholdSave(
+        household: Household
+    ) {
+        val firestore = getFirestore()
+        val ref = firestore.collection(COLLECTION_HOUSEHOLDS).document(household.householdUuid)
+        firestore.runTransaction { tx ->
+            val remote = tx.get(ref)
+            if (remote.exists() && !shouldUpload(localMetadata(household), remoteMetadata(remote))) {
+                throw IllegalStateException("Cloud มีข้อมูลครัวเรือนใหม่กว่า จึงไม่เขียนทับ")
+            }
+            tx.set(ref, householdToVersionedMap(household, remote), SetOptions.merge())
+            null
+        }.await()
+    }
+
+    private fun householdToVersionedMap(
+        household: Household,
+        remote: DocumentSnapshot?
+    ): Map<String, Any?> {
+        val now = System.currentTimeMillis()
+        return householdToMap(household) + mapOf(
+            "version" to nextVersion(household.version, remote?.getLong("version")),
+            "serverUpdatedAt" to now,
+            "updatedAt" to now,
+            "updatedFrom" to (household.updatedFrom ?: "android")
+        )
+    }
+
+    private fun personToVersionedMap(
+        person: Person,
+        householdUuid: String,
+        householdHouseNo: String,
+        remote: DocumentSnapshot?
+    ): Map<String, Any?> {
+        val now = System.currentTimeMillis()
+        return personToMap(person, householdUuid, householdHouseNo) + mapOf(
+            "version" to nextVersion(person.version, remote?.getLong("version")),
+            "serverUpdatedAt" to now,
+            "updatedAt" to now,
+            "updatedFrom" to (person.updatedFrom ?: "android")
+        )
+    }
+
 
     /**
      * Uploads all local Room households and registered citizens to Cloud Firestore,
@@ -127,6 +238,7 @@ open class RoomFirestoreSyncHelper(
      */
     suspend fun syncRoomToFirestore(): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             _syncState.value = SyncState.Syncing("กำลังเตรียมข้อมูลจาก Room Database...")
             val firestore = checkFirebaseConfiguredOrError()
             if (firestore == null) {
@@ -142,7 +254,10 @@ open class RoomFirestoreSyncHelper(
             val households = repository.getAllHouseholds().filter { !deletedUuids.contains(it.householdUuid) }
             val persons = repository.getAllPersonsList().filter { !deletedUuids.contains(it.personUuid) }
 
-            _syncState.value = SyncState.Syncing("กำลังส่งข้อมูล ${households.size} ครัวเรือน และ ${persons.size} คน ไปยัง Firestore...")
+            val cloudHouseholds = firestore.collection(COLLECTION_HOUSEHOLDS).get().await().documents.associateBy { it.id }
+            val cloudPersons = firestore.collection(COLLECTION_PERSONS).get().await().documents.associateBy { it.id }
+
+            _syncState.value = SyncState.Syncing("กำลังตรวจสอบเวอร์ชันข้อมูลก่อนส่งขึ้น Firestore...")
 
             val householdMap = households.associateBy { it.id }
 
@@ -153,8 +268,10 @@ open class RoomFirestoreSyncHelper(
             var personsSynced = 0
 
             for (h in households) {
+                val remote = cloudHouseholds[h.householdUuid]
+                if (remote != null && !shouldUpload(localMetadata(h), remoteMetadata(remote))) continue
                 val docRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(h.householdUuid)
-                val data = householdToMap(h)
+                val data = householdToVersionedMap(h, remote)
                 batch.set(docRef, data, SetOptions.merge())
                 opsInBatch++
                 householdsSynced++
@@ -168,8 +285,10 @@ open class RoomFirestoreSyncHelper(
 
             for (p in persons) {
                 val parentHousehold = householdMap[p.householdId] ?: continue
+                val remote = cloudPersons[p.personUuid]
+                if (remote != null && !shouldUpload(localMetadata(p), remoteMetadata(remote))) continue
                 val docRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
-                val data = personToMap(p, parentHousehold.householdUuid, parentHousehold.houseNo)
+                val data = personToVersionedMap(p, parentHousehold.householdUuid, parentHousehold.houseNo, remote)
                 batch.set(docRef, data, SetOptions.merge())
                 opsInBatch++
                 personsSynced++
@@ -236,11 +355,18 @@ open class RoomFirestoreSyncHelper(
             val batch = firestore.batch()
 
             val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(household.householdUuid)
-            batch.set(hRef, householdToMap(household), SetOptions.merge())
+            val remoteHousehold = hRef.get().await()
+            if (remoteHousehold.exists() && !shouldUpload(localMetadata(household), remoteMetadata(remoteHousehold))) {
+                return@withContext Result.failure(IllegalStateException("Cloud มีข้อมูลครัวเรือนใหม่กว่า จึงไม่เขียนทับ"))
+            }
+            val householdData = householdToVersionedMap(household, remoteHousehold)
+            batch.set(hRef, householdData, SetOptions.merge())
 
             for (p in validPersons) {
                 val pRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
-                batch.set(pRef, personToMap(p, household.householdUuid, household.houseNo), SetOptions.merge())
+                val remotePerson = pRef.get().await()
+                if (remotePerson.exists() && !shouldUpload(localMetadata(p), remoteMetadata(remotePerson))) continue
+                batch.set(pRef, personToVersionedMap(p, household.householdUuid, household.houseNo, remotePerson), SetOptions.merge())
             }
 
             batch.commit().await()
@@ -266,8 +392,7 @@ open class RoomFirestoreSyncHelper(
 
     @androidx.annotation.VisibleForTesting
     internal open suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
-        val pRef = getFirestore().collection(COLLECTION_PERSONS).document(person.personUuid)
-        pRef.set(personToMap(person, householdUuid, householdHouseNo), SetOptions.merge()).await()
+        transactionalPersonSave(person, householdUuid, householdHouseNo)
     }
 
     /**
@@ -279,6 +404,7 @@ open class RoomFirestoreSyncHelper(
         householdHouseNo: String = ""
     ): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             // Check if person has been tombstoned
             if (checkTombstoneExists(person.personUuid, "person")) {
                 return@withContext Result.failure(IllegalStateException("Cannot sync: Person ${person.personUuid} was deleted on Cloud."))
@@ -308,64 +434,55 @@ open class RoomFirestoreSyncHelper(
      * and writes tombstones to prevent resurrection during bidirectional sync.
      * Uses chunking to stay well within Firestore's 500 write limit per batch.
      */
+    private suspend fun transactionalDelete(
+        collection: String,
+        uuid: String,
+        type: String
+    ) {
+        val firestore = getFirestore()
+        val ref = firestore.collection(collection).document(uuid)
+        val tombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document(type + "_" + uuid)
+        firestore.runTransaction { tx ->
+            val remote = tx.get(ref)
+            val remoteVersion = remote.getLong("version") ?: 0L
+            val tombstone = tx.get(tombstoneRef)
+            val tombstoneVersion = tombstone.getLong("version") ?: 0L
+            val next = maxOf(remoteVersion, tombstoneVersion) + 1L
+            val now = System.currentTimeMillis()
+            tx.set(
+                tombstoneRef,
+                mapOf(
+                    "uuid" to uuid,
+                    "type" to type,
+                    "deletedAt" to now,
+                    "serverUpdatedAt" to now,
+                    "version" to next,
+                    "updatedFrom" to "android",
+                    "isDeleted" to true
+                ),
+                SetOptions.merge()
+            )
+            if (remote.exists()) tx.delete(ref)
+            null
+        }.await()
+    }
+
     suspend fun deleteHouseholdFromFirestore(householdUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             val firestore = getFirestore()
-            
-            // Query associated persons first
             val personDocs = firestore.collection(COLLECTION_PERSONS)
                 .whereEqualTo("householdUuid", householdUuid)
-                .get()
-                .await()
+                .get().await()
 
-            val personDocRefs = mutableListOf<com.google.firebase.firestore.DocumentReference>()
-            val personUuids = mutableListOf<String>()
-            
+            transactionalDelete(COLLECTION_HOUSEHOLDS, householdUuid, "household")
             for (doc in personDocs.documents) {
-                personDocRefs.add(doc.reference)
-                val pUuid = doc.getString("personUuid") ?: doc.id
-                personUuids.add(pUuid)
+                val uuid = doc.getString("personUuid") ?: doc.id
+                transactionalDelete(COLLECTION_PERSONS, uuid, "person")
             }
-
-            val timestamp = System.currentTimeMillis()
-            val entityOpsPairs = mutableListOf<List<(com.google.firebase.firestore.WriteBatch) -> Unit>>()
-
-            // 1. Household tombstone and delete FIRST
-            // Ensures if multi-batch chunking fails midway, at least the household is tombstoned.
-            // This prevents the household and any remaining orphaned persons from resurrecting on next sync.
-            val hTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("household_$householdUuid")
-            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(householdUuid)
-            
-            entityOpsPairs.add(listOf(
-                { b -> b.set(hTombstoneRef, mapOf("uuid" to householdUuid, "type" to "household", "deletedAt" to timestamp)) },
-                { b -> b.delete(hRef) }
-            ))
-            
-            // 2. Group persons' tombstones and deletes together AFTER household
-            for (i in personUuids.indices) {
-                val pUuid = personUuids[i]
-                val pRef = personDocRefs[i]
-                val pTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("person_$pUuid")
-                
-                entityOpsPairs.add(listOf(
-                    { b -> b.set(pTombstoneRef, mapOf("uuid" to pUuid, "type" to "person", "deletedAt" to timestamp)) },
-                    { b -> b.delete(pRef) }
-                ))
-            }
-            
-            // Chunk entity pairs at 200 pairs (400 ops) to stay safely below 500 limit
-            for (chunk in entityOpsPairs.chunked(200)) {
-                val batch = firestore.batch()
-                for (pair in chunk) {
-                    pair[0](batch) // tombstone
-                    pair[1](batch) // delete
-                }
-                batch.commit().await()
-            }
-
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete household $householdUuid from Firestore", e)
+            Log.e(TAG, "Failed to delete household $householdUuid", e)
             Result.failure(e)
         }
     }
@@ -375,16 +492,8 @@ open class RoomFirestoreSyncHelper(
      */
     open suspend fun deletePersonFromFirestore(personUuid: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val firestore = getFirestore()
-            val batch = firestore.batch()
-
-            val pRef = firestore.collection(COLLECTION_PERSONS).document(personUuid)
-            batch.delete(pRef)
-
-            val pTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES).document("person_$personUuid")
-            batch.set(pTombstoneRef, mapOf("uuid" to personUuid, "type" to "person", "deletedAt" to System.currentTimeMillis()))
-
-            batch.commit().await()
+            requireAuthenticatedFirebaseUser()
+            transactionalDelete(COLLECTION_PERSONS, personUuid, "person")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete person $personUuid from Firestore", e)
@@ -402,6 +511,7 @@ open class RoomFirestoreSyncHelper(
      */
     suspend fun syncFirestoreToRoom(): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             _syncState.value = SyncState.Syncing("กำลังดึงข้อมูลจาก Cloud Firestore...")
             val firestore = checkFirebaseConfiguredOrError()
             if (firestore == null) {
@@ -442,12 +552,14 @@ open class RoomFirestoreSyncHelper(
                 val existing = repository.getHouseholdByUuid(household.householdUuid)
 
                 if (existing != null) {
-                    val updated = household.copy(id = existing.id)
-                    repository.updateHousehold(updated)
+                    if (shouldAcceptRemote(localMetadata(existing), localMetadata(household))) {
+                        repository.updateHousehold(household.copy(id = existing.id))
+                        householdsImported++
+                    }
                 } else {
                     repository.insertHousehold(household.copy(id = 0))
+                    householdsImported++
                 }
-                householdsImported++
             }
 
             // 2. Process Persons (Strict UUID matching & Tombstone filtering)
@@ -472,12 +584,14 @@ open class RoomFirestoreSyncHelper(
                 val existing = repository.getPersonByUuid(person.personUuid)
 
                 if (existing != null) {
-                    val updated = person.copy(id = existing.id, householdId = localHousehold.id)
-                    repository.update(updated)
+                    if (shouldAcceptRemote(localMetadata(existing), localMetadata(person))) {
+                        repository.update(person.copy(id = existing.id, householdId = localHousehold.id))
+                        personsImported++
+                    }
                 } else {
                     repository.insert(person.copy(id = 0, householdId = localHousehold.id))
+                    personsImported++
                 }
-                personsImported++
             }
 
             val result = SyncResult(
@@ -531,7 +645,12 @@ open class RoomFirestoreSyncHelper(
             "locationCapturedAt" to household.locationCapturedAt,
             "locationProvider" to household.locationProvider,
             "dataStatus" to household.dataStatus.name,
-            "updatedAt" to household.lastModified
+            "updatedAt" to household.lastModified,
+            "serverUpdatedAt" to (household.serverUpdatedAt ?: household.lastModified),
+            "version" to household.version,
+            "updatedBy" to household.updatedBy,
+            "updatedFrom" to (household.updatedFrom ?: "android"),
+            "isDeleted" to household.isDeleted
         )
     }
 
@@ -548,7 +667,12 @@ open class RoomFirestoreSyncHelper(
             "houseStatus" to person.houseStatus.name,
             "personStatus" to person.personStatus.name,
             "dataStatus" to person.dataStatus.name,
-            "updatedAt" to person.lastModified
+            "updatedAt" to person.lastModified,
+            "serverUpdatedAt" to (person.serverUpdatedAt ?: person.lastModified),
+            "version" to person.version,
+            "updatedBy" to person.updatedBy,
+            "updatedFrom" to (person.updatedFrom ?: "android"),
+            "isDeleted" to person.isDeleted
         )
     }
 
@@ -568,6 +692,11 @@ open class RoomFirestoreSyncHelper(
         } ?: DataStatus.NEEDS_REVIEW
 
         val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+        val serverUpdatedAt = doc.getLong("serverUpdatedAt")
+        val version = doc.getLong("version") ?: 0L
+        val updatedBy = doc.getString("updatedBy")
+        val updatedFrom = doc.getString("updatedFrom")
+        val isDeleted = doc.getBoolean("isDeleted") == true
 
         return Household(
             id = 0,
@@ -583,7 +712,12 @@ open class RoomFirestoreSyncHelper(
             locationCapturedAt = capturedAt,
             locationProvider = provider,
             dataStatus = dataStatus,
-            lastModified = updatedAt
+            lastModified = updatedAt,
+            serverUpdatedAt = serverUpdatedAt,
+            version = version,
+            updatedBy = updatedBy,
+            updatedFrom = updatedFrom,
+            isDeleted = isDeleted
         )
     }
 
@@ -619,6 +753,11 @@ open class RoomFirestoreSyncHelper(
         } ?: DataStatus.NEEDS_REVIEW
 
         val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+        val serverUpdatedAt = doc.getLong("serverUpdatedAt")
+        val version = doc.getLong("version") ?: 0L
+        val updatedBy = doc.getString("updatedBy")
+        val updatedFrom = doc.getString("updatedFrom")
+        val isDeleted = doc.getBoolean("isDeleted") == true
 
         return Person(
             id = 0,
@@ -632,7 +771,12 @@ open class RoomFirestoreSyncHelper(
             houseStatus = houseStatus,
             personStatus = personStatus,
             dataStatus = dataStatus,
-            lastModified = updatedAt
+            lastModified = updatedAt,
+            serverUpdatedAt = serverUpdatedAt,
+            version = version,
+            updatedBy = updatedBy,
+            updatedFrom = updatedFrom,
+            isDeleted = isDeleted
         )
     }
 }

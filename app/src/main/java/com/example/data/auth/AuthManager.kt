@@ -1,13 +1,17 @@
 package com.example.data.auth
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.MutableContextWrapper
+import android.util.Base64
 import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -77,16 +81,8 @@ open class AuthManager(
                 try {
                     FirebaseApp.initializeApp(context)
                 } catch (e: Exception) {
-                    try {
-                        val options = com.google.firebase.FirebaseOptions.Builder()
-                            .setApplicationId(context.packageName)
-                            .setApiKey("AIzaSySmartOsmAndroidKeySurvey2026")
-                            .setProjectId("smart-osm-community")
-                            .build()
-                        FirebaseApp.initializeApp(context, options)
-                    } catch (e2: Exception) {
-                        Log.w(TAG, "Fallback FirebaseApp init failed: ${e2.message}")
-                    }
+                    // The google-services.json configuration is the single source of truth.
+                    Log.w(TAG, "FirebaseApp initialization failed: " + e.message)
                 }
             }
             return try {
@@ -316,8 +312,8 @@ open class AuthManager(
     open suspend fun signInWithGoogle(
         context: Context,
         customWebClientId: String? = null
-    ): Result<UserProfile> = withContext(Dispatchers.IO) {
-        try {
+    ): Result<UserProfile> {
+        return try {
             // 1. Resolve Web Client ID from params, saved preferences, or generated strings.xml
             val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
             if (!customWebClientId.isNullOrBlank()) {
@@ -339,28 +335,48 @@ open class AuthManager(
                 ?: defaultWebClientId.trim().takeIf { it.isNotBlank() }
 
             if (clientId.isNullOrBlank()) {
-                return@withContext Result.failure(
+                return Result.failure(
                     IllegalStateException(
                         "MISSING_WEB_CLIENT_ID: ยังไม่ได้กำหนดค่า Web Client ID สำหรับ Google Sign-In"
                     )
                 )
             }
 
-            // 2. Trigger Android Credential Manager
+            // 2. Trigger Android Credential Manager.
+            // Credential Manager launches system UI, so always use the foreground
+            // Activity context (wrapped for Activity recreation) and keep this call
+            // on the caller coroutine rather than moving it to Dispatchers.IO.
+            val activityContext = context.findActivity() ?: context
+            val credentialUiContext = if (activityContext is Activity) {
+                MutableContextWrapper(activityContext)
+            } else {
+                activityContext
+            }
+
+            // This screen has an explicit "Sign in with Google" button.
+            // Use the Sign-in-with-Google button flow directly because it is
+            // specifically designed for accounts that require re-authentication.
+            // See Android Credential Manager guidance for the button flow.
             val credentialManager = CredentialManager.create(context)
-            val googleIdOption = GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(false)
-                .setServerClientId(clientId)
-                .setAutoSelectEnabled(false)
+            val nonceBytes = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+            val nonce = Base64.encodeToString(
+                nonceBytes,
+                Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING
+            )
+
+            val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
+                serverClientId = clientId
+            )
+                .setNonce(nonce)
                 .build()
 
             val request = GetCredentialRequest.Builder()
-                .addCredentialOption(googleIdOption)
+                .addCredentialOption(signInWithGoogleOption)
                 .build()
 
             val response = credentialManager.getCredential(
                 request = request,
-                context = context
+                context = credentialUiContext
             )
 
             val credential = response.credential
@@ -369,8 +385,13 @@ open class AuthManager(
             ) {
                 val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                 
-                // 3. Ensure Firebase Auth is ready if available
+                // 3. Firebase Authentication is mandatory for cloud identity.
                 val auth = ensureFirebase(context) ?: firebaseAuth
+                if (auth == null) {
+                    return Result.failure(
+                        IllegalStateException("FIREBASE_AUTH_UNAVAILABLE: Firebase Authentication ยังไม่พร้อมใช้งาน")
+                    )
+                }
                 var firebaseUser: FirebaseUser? = null
                 if (auth != null) {
                     try {
@@ -378,7 +399,13 @@ open class AuthManager(
                         val authResult = auth.signInWithCredential(authCredential).await()
                         firebaseUser = authResult.user
                     } catch (e: Exception) {
-                        Log.w(TAG, "Firebase credential exchange skipped or offline: ${e.message}")
+                        Log.e(TAG, "Firebase credential exchange failed: ${e.message}", e)
+                        return Result.failure(
+                            IllegalStateException(
+                                "FIREBASE_AUTH_FAILED: ไม่สามารถยืนยันตัวตนกับ Firebase Authentication ได้",
+                                e
+                            )
+                        )
                     }
                 }
 
@@ -421,8 +448,13 @@ open class AuthManager(
                 Result.failure(IllegalStateException("ประเภทข้อมูล Credential ไม่ถูกต้อง: ${credential::class.java.name}"))
             }
         } catch (e: GetCredentialCancellationException) {
-            Log.i(TAG, "User cancelled Google Sign-In prompt")
-            Result.failure(e)
+            Log.w(TAG, "Google Sign-In flow was cancelled by Credential Manager: ${e.message}", e)
+            Result.failure(
+                IllegalStateException(
+                    "GOOGLE_SIGN_IN_CANCELLED: Credential Manager ยกเลิกหรือปิดขั้นตอนเลือกบัญชี: ${e.message ?: "unknown"}",
+                    e
+                )
+            )
         } catch (e: GetCredentialException) {
             Log.e(TAG, "CredentialManager failed: ${e.message}", e)
             Result.failure(e)
@@ -430,6 +462,15 @@ open class AuthManager(
             Log.e(TAG, "Authentication failed", e)
             Result.failure(e)
         }
+    }
+
+    private fun Context.findActivity(): Activity? {
+        var current: Context = this
+        while (current is ContextWrapper) {
+            if (current is Activity) return current
+            current = current.baseContext
+        }
+        return current as? Activity
     }
 
     /**

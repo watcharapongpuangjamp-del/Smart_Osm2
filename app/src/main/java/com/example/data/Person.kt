@@ -35,5 +35,10 @@ data class Person(
     val houseStatus: HouseholdRole = HouseholdRole.RESIDENT,
     val personStatus: PersonStatus = PersonStatus.ALIVE,
     val dataStatus: DataStatus = DataStatus.NEEDS_REVIEW,
-    val lastModified: Long = System.currentTimeMillis()
+    val lastModified: Long = System.currentTimeMillis(),
+    val serverUpdatedAt: Long? = null,
+    val version: Long = 0L,
+    val updatedBy: String? = null,
+    val updatedFrom: String? = null,
+    val isDeleted: Boolean = false
 )
