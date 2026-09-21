@@ -6,12 +6,13 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Person::class, Household::class, PersonHistory::class], version = 9, exportSchema = true)
+@Database(entities = [Person::class, Household::class, PersonHistory::class, SyncDeletion::class], version = 10, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun personDao(): PersonDao
     abstract fun householdDao(): HouseholdDao
     abstract fun personHistoryDao(): PersonHistoryDao
+    abstract fun syncDeletionDao(): SyncDeletionDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) {} }
@@ -106,5 +107,19 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE households ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
             }
         }
+    val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS sync_deletion_journal (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        entityType TEXT NOT NULL,
+                        entityUuid TEXT NOT NULL,
+                        deletedAt INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_sync_deletion_journal_entityType_entityUuid ON sync_deletion_journal (entityType, entityUuid)")
+            }
+        }
     }
 }
+
