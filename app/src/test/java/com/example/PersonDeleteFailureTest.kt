@@ -74,7 +74,8 @@ class PersonDeleteFailureTest {
         val insertedPerson = repository.getPersonByUuid("P-DEL-FAIL-001")
         assertNotNull(insertedPerson)
 
-        // 2. Mock a SyncHelper that FAILS to delete from Firestore
+        // 2. Initialize ViewModel with a Cloud helper that would fail if called.
+        // Local CRUD must not depend on Cloud availability.
         val failingSyncHelper = object : RoomFirestoreSyncHelper(context, repository, { null }) {
             override fun isFirebaseConfigured(): Boolean = true
             override suspend fun deletePersonFromFirestore(personUuid: String): Result<Unit> {
@@ -83,33 +84,30 @@ class PersonDeleteFailureTest {
         }
 
         val excelImportUseCase = com.example.domain.ExcelImportUseCase(db)
-        
-        // 3. Initialize ViewModel with failing sync helper
         val viewModel = PersonViewModel(repository, excelImportUseCase, failingSyncHelper)
-        
-        // 4. Act: Attempt to delete the person
+
+        // 3. Act: delete locally; Cloud must not be required.
         var resultSuccess: Boolean? = null
         var resultMessage: String? = null
         val latch = java.util.concurrent.CountDownLatch(1)
-        
+
         viewModel.delete(insertedPerson!!) { success, message ->
             resultSuccess = success
             resultMessage = message
             latch.countDown()
         }
-        
+
         // Wait for coroutines to complete
         testDispatcher.scheduler.advanceUntilIdle()
         latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // 5. Assert: The callback should indicate failure due to cloud error
-        assertEquals(false, resultSuccess)
-        assertTrue(resultMessage?.contains("Simulated Cloud Network Error") == true)
+        // 5. Assert: local deletion succeeds without Cloud.
+        assertEquals(true, resultSuccess)
+        assertEquals(null, resultMessage)
 
-        // 6. Assert: The local Room database must STILL contain the person (Atomicity)
+        // 6. Assert: the local Room database is the source of truth.
         val afterPerson = repository.getPersonByUuid("P-DEL-FAIL-001")
-        assertNotNull("Person should NOT be deleted from Room if Cloud sync fails", afterPerson)
-        assertEquals("P-DEL-FAIL-001", afterPerson?.personUuid)
+        assertNull("Person should be deleted from Room independently of Cloud", afterPerson)
     }
 }
