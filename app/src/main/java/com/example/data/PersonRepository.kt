@@ -27,7 +27,8 @@ class PersonRepository(
     private val db: AppDatabase,
     private val personDao: PersonDao,
     private val householdDao: HouseholdDao,
-    private val personHistoryDao: PersonHistoryDao
+    private val personHistoryDao: PersonHistoryDao,
+    private val syncDeletionDao: SyncDeletionDao = db.syncDeletionDao()
 ) {
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
@@ -44,17 +45,29 @@ class PersonRepository(
 
     // Household Operations
     suspend fun insertHousehold(household: Household): Long {
-        return householdDao.insert(household)
+        return db.withTransaction {
+            syncDeletionDao.delete("HOUSEHOLD", household.householdUuid)
+            householdDao.insert(household)
+        }
     }
 
     suspend fun updateHousehold(household: Household) {
-        householdDao.update(household)
+        db.withTransaction {
+            syncDeletionDao.delete("HOUSEHOLD", household.householdUuid)
+            householdDao.update(household)
+        }
     }
 
     suspend fun deleteHousehold(household: Household): Result<Unit> {
         return try {
-            Log.d("PersonRepository", "Deleting household id: ${household.id}, uuid: ${household.householdUuid}, houseNo: ${household.houseNo}")
-            householdDao.delete(household)
+            db.withTransaction {
+                val persons = personDao.getPersonsByHouseholdIdList(household.id)
+                householdDao.delete(household)
+                syncDeletionDao.upsert(SyncDeletion(entityType = "HOUSEHOLD", entityUuid = household.householdUuid, deletedAt = System.currentTimeMillis()))
+                persons.forEach { person ->
+                    syncDeletionDao.upsert(SyncDeletion(entityType = "PERSON", entityUuid = person.personUuid, deletedAt = System.currentTimeMillis()))
+                }
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("PersonRepository", "Failed to delete household id: ${household.id}", e)
@@ -81,6 +94,7 @@ class PersonRepository(
     // Person Operations
     suspend fun insert(person: Person) {
         db.withTransaction {
+            syncDeletionDao.delete("PERSON", person.personUuid)
             val newId = personDao.insertPerson(person)
             val insertedPerson = person.copy(id = newId)
             personHistoryDao.insert(
@@ -97,6 +111,7 @@ class PersonRepository(
     suspend fun update(person: Person) {
         db.withTransaction {
             val oldPerson = personDao.getPersonById(person.id)
+            syncDeletionDao.delete("PERSON", person.personUuid)
             personDao.updatePerson(person)
             personHistoryDao.insert(
                 PersonHistory(
@@ -113,6 +128,7 @@ class PersonRepository(
         db.withTransaction {
             val oldPerson = personDao.getPersonById(person.id)
             personDao.deletePerson(person)
+            syncDeletionDao.upsert(SyncDeletion(entityType = "PERSON", entityUuid = person.personUuid, deletedAt = System.currentTimeMillis()))
             personHistoryDao.insert(
                 PersonHistory(
                     personId = person.id,
@@ -142,6 +158,16 @@ class PersonRepository(
 
     suspend fun getAllHouseholds(): List<Household> = householdDao.getAllHouseholds()
     suspend fun getAllPersonsList(): List<Person> = personDao.getAllPersonsList()
+
+    suspend fun getPendingDeletions(): List<SyncDeletion> = syncDeletionDao.getAll()
+
+    suspend fun clearPendingDeletion(deletion: SyncDeletion) {
+        syncDeletionDao.delete(deletion.entityType, deletion.entityUuid)
+    }
+
+    suspend fun clearAllPendingDeletions() {
+        syncDeletionDao.deleteAll()
+    }
 
     suspend fun createBackupPayload(): BackupPayload {
         val households = householdDao.getAllHouseholds()
