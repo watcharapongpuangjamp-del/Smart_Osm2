@@ -10,9 +10,15 @@ interface PersonHistoryDao {
     @Insert
     suspend fun insert(history: PersonHistory)
 
+    @Insert
+    suspend fun insertAll(history: List<PersonHistory>)
+
     @Query("SELECT * FROM person_history WHERE personId = :personId ORDER BY timestamp DESC")
     fun getHistoryForPerson(personId: Long): Flow<List<PersonHistory>>
-    
+
     @Query("SELECT * FROM person_history ORDER BY timestamp DESC")
     fun getAllHistory(): Flow<List<PersonHistory>>
+
+    @Query("DELETE FROM person_history")
+    suspend fun deleteAll()
 }
