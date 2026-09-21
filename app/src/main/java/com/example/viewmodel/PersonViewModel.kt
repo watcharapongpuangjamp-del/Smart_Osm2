@@ -363,45 +363,23 @@ class PersonViewModel(
     fun deleteHousehold(household: Household, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                android.util.Log.d("PersonViewModel", "Starting delete household: id=${household.id}, uuid=${household.householdUuid}")
-                
-                // 1. Delete from Firestore FIRST
-                // This ensures Cloud tombstones are written BEFORE local Room deletion.
-                // Prevents resurrection if app crashes between local delete and Cloud sync.
-                if (syncHelper != null && syncHelper.isFirebaseConfigured()) {
-                    val cloudResult = syncHelper.deleteHouseholdFromFirestore(household.householdUuid)
-                    if (cloudResult.isFailure) {
-                        val cloudEx = cloudResult.exceptionOrNull()
-                        withContext(Dispatchers.Main) {
-                            onResult(false, "ลบข้อมูล Cloud ไม่สำเร็จ (ป้องกันการสูญหายหรือคืนชีพ): ${cloudEx?.message}")
-                        }
-                        return@launch
-                    }
-                }
-
-                // 2. Delete locally
+                // Local is the source of truth. Cloud is updated only by explicit Sync.
                 val result = repository.deleteHousehold(household)
-                if (result.isFailure) {
-                    val ex = result.exceptionOrNull()
-                    withContext(Dispatchers.Main) {
-                        onResult(false, ex?.message ?: "เกิดข้อผิดพลาดในการลบบ้าน")
-                    }
-                    return@launch
-                }
-
                 withContext(Dispatchers.Main) {
-                    android.util.Log.d("PersonViewModel", "Household deleted successfully (Local & Cloud)")
-                    onResult(true, null)
+                    if (result.isSuccess) {
+                        onResult(true, null)
+                    } else {
+                        onResult(false, result.exceptionOrNull()?.message ?: "เกิดข้อผิดพลาดในการลบบ้าน")
+                    }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("PersonViewModel", "Exception deleting household", e)
                 withContext(Dispatchers.Main) {
                     onResult(false, e.message ?: "เกิดข้อผิดพลาดที่ไม่คาดคิด")
                 }
             }
         }
     }
-    
+
     suspend fun getHouseholdById(id: Long): Household? = repository.getHouseholdById(id)
     fun getHouseholdWithPersonsById(id: Long) = repository.getHouseholdWithPersonsById(id)
 
@@ -414,24 +392,8 @@ class PersonViewModel(
     fun delete(person: Person, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // 1. Delete from Firestore FIRST
-                // This ensures Cloud tombstones are written BEFORE local Room deletion.
-                // Prevents resurrection if app crashes between local delete and Cloud sync.
-                val helper = syncHelper
-                if (helper != null && helper.isFirebaseConfigured()) {
-                    val cloudResult = helper.deletePersonFromFirestore(person.personUuid)
-                    if (cloudResult.isFailure) {
-                        val cloudEx = cloudResult.exceptionOrNull()
-                        withContext(Dispatchers.Main) {
-                            onResult(false, "ลบข้อมูล Cloud ไม่สำเร็จ (ป้องกันการสูญหายหรือคืนชีพ): ${cloudEx?.message}")
-                        }
-                        return@launch
-                    }
-                }
-
-                // 2. Delete locally
+                // Local is the source of truth. Do not require Firebase for local CRUD.
                 repository.delete(person)
-                
                 withContext(Dispatchers.Main) {
                     onResult(true, null)
                 }
@@ -442,7 +404,7 @@ class PersonViewModel(
             }
         }
     }
-    
+
     suspend fun getPersonById(id: Long): Person? = repository.getPersonById(id)
     suspend fun getPersonByNationalId(nationalId: String): Person? = repository.getPersonByNationalId(nationalId)
     
