@@ -4,6 +4,7 @@ import android.net.Uri
 import com.example.data.Household
 import com.example.data.LocalDateAdapter
 import com.example.data.Person
+import com.example.data.SyncDeletion
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -34,10 +35,18 @@ data class BackupHistoryRecord(
 )
 
 @JsonClass(generateAdapter = false)
+data class BackupDeletionRecord(
+    val entityType: String,
+    val entityUuid: String,
+    val deletedAt: Long
+)
+
+@JsonClass(generateAdapter = false)
 data class BackupPayload(
     val households: List<Household>,
     val persons: List<Person>,
-    val history: List<BackupHistoryRecord>
+    val history: List<BackupHistoryRecord>,
+    val deletions: List<BackupDeletionRecord> = emptyList()
 )
 
 @JsonClass(generateAdapter = false)
