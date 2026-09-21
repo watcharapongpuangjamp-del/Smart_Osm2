@@ -152,7 +152,23 @@ class AuthViewModelTest {
 
     @Test
     fun `signInWithGoogleTest sets success state`() = runTest(testDispatcher) {
-        val fakeAuthManager = object : AuthManager({ null }) {}
+        val fakeAuthManager = object : AuthManager({ null }) {
+            override fun signInWithGoogleTest(
+                context: android.content.Context,
+                email: String,
+                displayName: String
+            ): Result<com.example.data.auth.UserProfile> {
+                return Result.success(
+                    com.example.data.auth.UserProfile(
+                        uid = "google:test-user",
+                        email = email,
+                        displayName = displayName,
+                        providerId = "google.com",
+                        providerIds = listOf("google.com")
+                    )
+                )
+            }
+        }
         val viewModel = AuthViewModel(fakeAuthManager)
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
