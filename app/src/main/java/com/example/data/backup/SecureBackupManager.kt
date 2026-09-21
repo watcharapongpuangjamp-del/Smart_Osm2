@@ -103,7 +103,9 @@ class SecureBackupManager {
 
         val key = deriveKey(password, salt)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val aad = aadFor(backupId, createdAt, salt, iv)
         cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
+        cipher.updateAAD(aad)
 
         val plaintext = payloadAdapter.toJson(payload).toByteArray(Charsets.UTF_8)
         val ciphertext = cipher.doFinal(plaintext)
@@ -169,11 +171,14 @@ class SecureBackupManager {
         val key = deriveKey(password, b64d(envelope.salt))
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         try {
+            val saltBytes = b64d(envelope.salt)
+            val ivBytes = b64d(envelope.iv)
             cipher.init(
                 Cipher.DECRYPT_MODE,
                 key,
-                GCMParameterSpec(128, b64d(envelope.iv))
+                GCMParameterSpec(128, ivBytes)
             )
+            cipher.updateAAD(aadFor(envelope.backupId, envelope.createdAt, saltBytes, ivBytes))
             val plaintext = cipher.doFinal(b64d(envelope.cipherText))
             val payload = payloadAdapter.fromJson(String(plaintext, Charsets.UTF_8))
                 ?: error("ข้อมูลสำรองว่างหรือเสียหาย")
@@ -199,6 +204,11 @@ class SecureBackupManager {
             spec.clearPassword()
         }
     }
+
+    private fun aadFor(backupId: String, createdAt: Long, salt: ByteArray, iv: ByteArray): ByteArray =
+        listOf(FORMAT, FORMAT_VERSION, backupId, createdAt, APPLICATION_ID, DATABASE_SCHEMA_VERSION, KDF, ITERATIONS, b64(salt), b64(iv))
+            .joinToString("|")
+            .toByteArray(Charsets.UTF_8)
 
     private fun b64(bytes: ByteArray): String =
         Base64.getEncoder().encodeToString(bytes)
