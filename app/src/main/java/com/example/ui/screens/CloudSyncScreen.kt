@@ -43,6 +43,12 @@ fun CloudSyncScreen(
 
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
+    var backupPassword by remember { mutableStateOf("") }
+    var backupUri by remember { mutableStateOf<Uri?>(null) }
+    var showBackupPasswordDialog by remember { mutableStateOf(false) }
+    var showRestorePreview by remember { mutableStateOf(false) }
+    var backupAction by remember { mutableStateOf<String?>(null) }
+    var backupInfo by remember { mutableStateOf<com.example.data.backup.BackupInfo?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -52,6 +58,28 @@ fun CloudSyncScreen(
                 isError = !success
                 actionMessage = message
             }
+        }
+    }
+
+    val secureBackupExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        uri?.let {
+            viewModel.exportSecureBackup(context, it, backupPassword) { success, message ->
+                isError = !success
+                actionMessage = message
+                backupPassword = ""
+            }
+        }
+    }
+
+    val secureBackupImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            backupUri = it
+            backupAction = "restore"
+            showBackupPasswordDialog = true
         }
     }
 
@@ -228,7 +256,49 @@ fun CloudSyncScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Section 2: Cloud Firestore Redundancy & Sync
+            Text(
+                text = "2. Local Backup แบบเข้ารหัส",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = EmeraldPrimary
+            )
+
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "สำรองฐานข้อมูลจากเครื่องเป็นไฟล์ Smart OSM ที่มี Identity และเข้ารหัส ไม่ต้องใช้ Google Login และไม่ใช่การ Sync",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = { backupAction = "export"; showBackupPasswordDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
+                    ) {
+                        Icon(Icons.Filled.Lock, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("สร้าง Local Backup (.sosm)", fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = { secureBackupImportLauncher.launch(arrayOf("application/octet-stream", "application/*", "*/*")) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldPrimary)
+                    ) {
+                        Icon(Icons.Filled.Restore, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("นำเข้า / Restore จาก Local Backup", fontWeight = FontWeight.Bold)
+                    }
+                    Text(
+                        text = "Restore จะตรวจไฟล์และแสดงจำนวนข้อมูลก่อนเขียนทับฐานข้อมูลในเครื่อง",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Section 3: Cloud Firestore Redundancy & Sync
             Text(
                 text = "2. การซิงค์และสำรองข้อมูลบนคลาวด์ (Cloud Redundancy)",
                 style = MaterialTheme.typography.titleMedium,
@@ -305,6 +375,84 @@ fun CloudSyncScreen(
             }
         }
     }
+    if (showBackupPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupPasswordDialog = false; backupPassword = "" },
+            title = { Text(if (backupAction == "export") "สร้าง Local Backup" else "เปิดไฟล์ Backup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("กรอกรหัสผ่านสำหรับไฟล์สำรองอย่างน้อย 8 ตัวอักษร")
+                    OutlinedTextField(
+                        value = backupPassword,
+                        onValueChange = { backupPassword = it },
+                        singleLine = true,
+                        label = { Text("รหัสผ่าน Backup") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = backupPassword.length >= 8,
+                    onClick = {
+                        showBackupPasswordDialog = false
+                        if (backupAction == "export") {
+                            secureBackupExportLauncher.launch("smartosm_backup_" + System.currentTimeMillis() + ".sosm")
+                        } else {
+                            val uri = backupUri
+                            if (uri != null) {
+                                viewModel.previewSecureBackup(context, uri, backupPassword) { success, info, message ->
+                                    isError = !success
+                                    actionMessage = message
+                                    if (success) { backupInfo = info; showRestorePreview = true }
+                                }
+                            }
+                        }
+                    }
+                ) { Text("ดำเนินการ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackupPasswordDialog = false; backupPassword = "" }) { Text("ยกเลิก") }
+            }
+        )
+    }
+
+    if (showRestorePreview) {
+        val info = backupInfo
+        AlertDialog(
+            onDismissRequest = { showRestorePreview = false; backupPassword = ""; backupUri = null },
+            title = { Text("ตรวจสอบ Local Backup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Backup ID: " + (info?.backupId ?: "-"))
+                    Text("ครัวเรือน: " + (info?.householdCount ?: 0))
+                    Text("ประชากร: " + (info?.personCount ?: 0))
+                    Text("ประวัติ: " + (info?.historyCount ?: 0))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("การ Restore จะเขียนทับข้อมูล Local ปัจจุบันทั้งหมด ควรสร้าง Backup ปัจจุบันก่อน", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val uri = backupUri
+                    if (uri != null) {
+                        showRestorePreview = false
+                        viewModel.restoreSecureBackup(context, uri, backupPassword) { success, restoredInfo, message ->
+                            isError = !success
+                            actionMessage = message
+                            backupPassword = ""
+                            backupUri = null
+                            backupInfo = restoredInfo
+                        }
+                    }
+                }) { Text("Restore ข้อมูล") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestorePreview = false; backupPassword = ""; backupUri = null }) { Text("ยกเลิก") }
+            }
+        )
+    }
+
 }
 
 @Composable
