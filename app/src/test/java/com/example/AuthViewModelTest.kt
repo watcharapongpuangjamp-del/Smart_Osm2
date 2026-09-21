@@ -15,9 +15,11 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.robolectric.annotation.Config
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@Config(sdk = [34])
 class AuthViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
