@@ -109,7 +109,8 @@ open class RoomFirestoreSyncHelper(
             ?: throw IllegalStateException("ระบบ Cloud (Firebase) ยังไม่ได้ตั้งค่าในโปรเจกต์นี้ กรุณาใช้งานฐานข้อมูลภายใน (Room) แทน")
     }
 
-    private fun requireAuthenticatedFirebaseUser() {
+    @androidx.annotation.VisibleForTesting
+    internal open fun requireAuthenticatedFirebaseUser() {
         val user = try {
             FirebaseAuth.getInstance().currentUser
         } catch (e: Exception) {
