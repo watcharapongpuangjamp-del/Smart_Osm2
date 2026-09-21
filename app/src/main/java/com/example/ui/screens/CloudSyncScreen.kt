@@ -25,7 +25,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.sync.SyncState
 import com.example.ui.components.ThemeQuickToggleButton
 import com.example.ui.theme.EmeraldPrimary
-import com.example.ui.theme.MintAccent
 import com.example.viewmodel.PersonViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -355,22 +354,6 @@ fun CloudSyncScreen(
                         Text("กู้คืนจาก Cloud (Explicit Recovery)", fontWeight = FontWeight.Bold)
                     }
 
-                    // Bidirectional Sync Button
-                    Button(
-                        onClick = {
-                            viewModel.bidirectionalSync { result ->
-                                isError = result.isFailure
-                                actionMessage = if (result.isSuccess) "ซิงค์ 2 ทาง (Bidirectional) สำเร็จ" else "ซิงค์ไม่สำเร็จ: ${result.exceptionOrNull()?.message}"
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MintAccent)
-                    ) {
-                        Icon(Icons.Filled.Sync, contentDescription = null, tint = Color.Black)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("ซิงค์แบบ 2 ทาง (Bidirectional Sync)", fontWeight = FontWeight.Bold, color = Color.Black)
-                    }
                 }
             }
         }
