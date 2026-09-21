@@ -76,10 +76,10 @@ jobs:
             base64 --decode debug.keystore.base64 > debug.keystore
             echo "✓ Decoded debug.keystore from debug.keystore.base64"
           elif [ ! -f "debug.keystore" ]; then
-            keytool -genkeypair -v -keystore debug.keystore \\
-              -keyalg RSA -keysize 2048 \\
-              -validity 10000 -alias androiddebugkey \\
-              -storepass android -keypass android \\
+            keytool -genkeypair -v -keystore debug.keystore \
+              -keyalg RSA -keysize 2048 \
+              -validity 10000 -alias androiddebugkey \
+              -storepass android -keypass android \
               -dname "CN=Android Debug,O=Android,C=US"
             echo "⚠ Generated a temporary debug keystore. Configure DEBUG_KEYSTORE_BASE64 for a stable CI certificate."
           else
@@ -92,9 +92,9 @@ jobs:
       - name: Verify debug signing certificate
         run: |
           echo "=== CI Debug Signing Certificate ==="
-          keytool -list -v -keystore debug.keystore \\
-            -alias androiddebugkey \\
-            -storepass android \\
+          keytool -list -v -keystore debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
             -keypass android | grep -E "Owner:|SHA1:|SHA256:"
           echo "===================================="
 
@@ -106,7 +106,7 @@ jobs:
           gradle testDebugUnitTest --stacktrace --no-daemon
         env:
           MAPS_API_KEY: placeholder_maps_api_key_ci_build
-        continue-on-error: true
+        continue-on-error: false
 
       - name: Build Debug APK
         if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_type == 'debug'
