@@ -15,6 +15,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import androidx.test.core.app.ApplicationProvider
 import org.robolectric.annotation.Config
 import org.junit.Test
 
@@ -153,7 +154,7 @@ class AuthViewModelTest {
     fun `signInWithGoogleTest sets success state`() = runTest(testDispatcher) {
         val fakeAuthManager = object : AuthManager({ null }) {}
         val viewModel = AuthViewModel(fakeAuthManager)
-        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
         viewModel.signInWithGoogleTest(context, "testuser@gmail.com")
         assertTrue(viewModel.uiState.value is AuthUiState.Success)
