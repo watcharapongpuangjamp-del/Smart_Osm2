@@ -141,6 +141,23 @@ class PersonRepository(
         }
     }
     
+    suspend fun deleteHouseholdFromCloudRecovery(household: Household): Result<Unit> {
+        return try {
+            db.withTransaction {
+                householdDao.delete(household)
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deletePersonFromCloudRecovery(person: Person) {
+        db.withTransaction {
+            personDao.deletePerson(person)
+        }
+    }
+
     suspend fun getPersonById(id: Long): Person? {
         return personDao.getPersonById(id)
     }
