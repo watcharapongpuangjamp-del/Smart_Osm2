@@ -300,7 +300,7 @@ fun CloudSyncScreen(
 
             // Section 3: Cloud Firestore Redundancy & Sync
             Text(
-                text = "2. การซิงค์และสำรองข้อมูลบนคลาวด์ (Cloud Redundancy)",
+                text = "3. Cloud Backup / Recovery",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = EmeraldPrimary
@@ -316,7 +316,7 @@ fun CloudSyncScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "เชื่อมต่อและสำรองข้อมูลขึ้นระบบ Google Cloud Firestore เพื่อความปลอดภัย ป้องกันข้อมูลสูญหาย และซิงค์ระหว่างอุปกรณ์",
+                        text = "Cloud เป็นข้อมูลสำรองด้านข้างของ Local โดยการ Push จะส่งข้อมูลจาก Local ขึ้น Cloud เท่านั้น ส่วนการดึงจาก Cloud เป็น Recovery ที่ผู้ใช้สั่งเอง",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -352,7 +352,7 @@ fun CloudSyncScreen(
                     ) {
                         Icon(Icons.Filled.CloudDownload, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("กู้คืนข้อมูลจากคลาวด์ (Pull from Cloud)", fontWeight = FontWeight.Bold)
+                        Text("กู้คืนจาก Cloud (Explicit Recovery)", fontWeight = FontWeight.Bold)
                     }
 
                     // Bidirectional Sync Button
