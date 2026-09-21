@@ -36,12 +36,16 @@ import com.example.data.PersonStatus
 import com.example.data.sync.RoomFirestoreSyncHelper
 import com.example.data.sync.SyncResult
 import com.example.data.sync.SyncState
+import com.example.data.backup.SecureBackupManager
+import com.example.data.backup.BackupInfo
 
 class PersonViewModel(
     private val repository: PersonRepository,
     private val excelImportUseCase: com.example.domain.ExcelImportUseCase,
     private val syncHelper: RoomFirestoreSyncHelper? = null
 ) : ViewModel() {
+
+    private val secureBackupManager = SecureBackupManager()
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -505,6 +509,64 @@ class PersonViewModel(
                 inputStream?.close()
                 _isImporting.value = false
             }
+        }
+    }
+
+    fun exportSecureBackup(
+        context: Context, uri: Uri, password: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val chars = password.toCharArray()
+            try {
+                val payload = repository.createBackupPayload()
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    val info = secureBackupManager.writeBackup(output, payload, chars)
+                    withContext(Dispatchers.Main) {
+                        onComplete(true, "สร้างไฟล์สำรองเข้ารหัสสำเร็จ: " + info.householdCount + " ครัวเรือน, " + info.personCount + " คน")
+                    }
+                } ?: throw IllegalStateException("ไม่สามารถสร้างไฟล์สำรองบนอุปกรณ์ได้")
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { onComplete(false, e.message ?: "สร้างไฟล์สำรองไม่สำเร็จ") }
+            } finally { chars.fill('\u0000') }
+        }
+    }
+
+    fun previewSecureBackup(
+        context: Context, uri: Uri, password: String,
+        onComplete: (Boolean, BackupInfo?, String) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val chars = password.toCharArray()
+            try {
+                val info = context.contentResolver.openInputStream(uri)?.use { input ->
+                    secureBackupManager.readBackup(input, chars).first
+                } ?: throw IllegalStateException("ไม่สามารถเปิดไฟล์สำรองได้")
+                withContext(Dispatchers.Main) { onComplete(true, info, "ตรวจสอบไฟล์สำรองผ่าน") }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { onComplete(false, null, e.message ?: "ตรวจสอบไฟล์สำรองไม่สำเร็จ") }
+            } finally { chars.fill('\u0000') }
+        }
+    }
+
+    fun restoreSecureBackup(
+        context: Context, uri: Uri, password: String,
+        onComplete: (Boolean, BackupInfo?, String) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val chars = password.toCharArray()
+            try {
+                val result = context.contentResolver.openInputStream(uri)?.use { input ->
+                    secureBackupManager.readBackup(input, chars)
+                } ?: throw IllegalStateException("ไม่สามารถเปิดไฟล์สำรองได้")
+                val info = result.first
+                repository.restoreBackupPayload(result.second)
+                withContext(Dispatchers.Main) {
+                    onComplete(true, info, "กู้คืนข้อมูลสำเร็จ: " + info.householdCount + " ครัวเรือน, " + info.personCount + " คน")
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { onComplete(false, null, e.message ?: "กู้คืนข้อมูลไม่สำเร็จ") }
+            } finally { chars.fill('\u0000') }
         }
     }
 
