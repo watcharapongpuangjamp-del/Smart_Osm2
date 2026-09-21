@@ -37,6 +37,9 @@ interface PersonDao {
     @Query("SELECT * FROM persons WHERE nationalId = :nationalId LIMIT 1")
     suspend fun getPersonByNationalId(nationalId: String): Person?
     
+    @Query("DELETE FROM persons")
+    suspend fun deleteAll()
+
     @Query("SELECT * FROM persons WHERE householdId = :householdId")
     fun getPersonsByHouseholdId(householdId: Long): Flow<List<Person>>
 }
