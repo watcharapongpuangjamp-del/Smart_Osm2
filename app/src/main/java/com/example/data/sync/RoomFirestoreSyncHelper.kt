@@ -551,11 +551,11 @@ open class RoomFirestoreSyncHelper(
             // Remove stale local Room records that have been deleted in Cloud
             val allLocalHouseholdsToDelete = repository.getAllHouseholds().filter { deletedUuids.contains(it.householdUuid) }
             for (h in allLocalHouseholdsToDelete) {
-                repository.deleteHousehold(h)
+                repository.deleteHouseholdFromCloudRecovery(h)
             }
             val allLocalPersonsToDelete = repository.getAllPersonsList().filter { deletedUuids.contains(it.personUuid) }
             for (p in allLocalPersonsToDelete) {
-                repository.delete(p)
+                repository.deletePersonFromCloudRecovery(p)
             }
 
             val householdDocs = firestore.collection(COLLECTION_HOUSEHOLDS).get().await()
