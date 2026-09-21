@@ -1,11 +1,14 @@
 package com.example.data
 
 import android.util.Log
+import com.example.data.backup.BackupHistoryRecord
+import com.example.data.backup.BackupPayload
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.squareup.moshi.FromJson
 import com.squareup.moshi.ToJson
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
 import androidx.room.withTransaction
@@ -139,4 +142,69 @@ class PersonRepository(
 
     suspend fun getAllHouseholds(): List<Household> = householdDao.getAllHouseholds()
     suspend fun getAllPersonsList(): List<Person> = personDao.getAllPersonsList()
+
+    suspend fun createBackupPayload(): BackupPayload {
+        val households = householdDao.getAllHouseholds()
+        val persons = personDao.getAllPersonsList()
+        val personUuidById = persons.associate { it.id to it.personUuid }
+        val history = personHistoryDao.getAllHistory().first().mapNotNull { item ->
+            val uuid = personUuidById[item.personId] ?: return@mapNotNull null
+            BackupHistoryRecord(
+                personUuid = uuid,
+                action = item.action,
+                oldValue = item.oldValue,
+                newValue = item.newValue,
+                timestamp = item.timestamp,
+                operatorId = item.operatorId,
+                operatorName = item.operatorName,
+                role = item.role,
+                deviceId = item.deviceId,
+                source = item.source
+            )
+        }
+        return BackupPayload(households = households, persons = persons, history = history)
+    }
+
+    suspend fun restoreBackupPayload(payload: BackupPayload) {
+        db.withTransaction {
+            personHistoryDao.deleteAll()
+            personDao.deleteAll()
+            householdDao.deleteAll()
+
+            val householdIdByUuid = mutableMapOf<String, Long>()
+            payload.households.forEach { household ->
+                val newId = householdDao.insert(household.copy(id = 0))
+                householdIdByUuid[household.householdUuid] = newId
+            }
+
+            val personIdByUuid = mutableMapOf<String, Long>()
+            payload.persons.forEach { person ->
+                val originalHouseholdUuid = payload.households
+                    .firstOrNull { it.id == person.householdId }
+                    ?.householdUuid
+                    ?: throw IllegalStateException("Backup ไม่พบครัวเรือนของบุคคล " + person.personUuid)
+                val householdId = householdIdByUuid[originalHouseholdUuid]
+                    ?: throw IllegalStateException("Backup ไม่สามารถสร้างครัวเรือน " + originalHouseholdUuid + " ได้")
+                val newId = personDao.insertPerson(person.copy(id = 0, householdId = householdId))
+                personIdByUuid[person.personUuid] = newId
+            }
+
+            val restoredHistory = payload.history.mapNotNull { item ->
+                val personId = personIdByUuid[item.personUuid] ?: return@mapNotNull null
+                PersonHistory(
+                    personId = personId,
+                    action = item.action,
+                    oldValue = item.oldValue,
+                    newValue = item.newValue,
+                    timestamp = item.timestamp,
+                    operatorId = item.operatorId,
+                    operatorName = item.operatorName,
+                    role = item.role,
+                    deviceId = item.deviceId,
+                    source = item.source
+                )
+            }
+            if (restoredHistory.isNotEmpty()) personHistoryDao.insertAll(restoredHistory)
+        }
+    }
 }
