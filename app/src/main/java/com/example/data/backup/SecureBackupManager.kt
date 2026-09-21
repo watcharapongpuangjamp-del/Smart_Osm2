@@ -4,7 +4,6 @@ import android.net.Uri
 import com.example.data.Household
 import com.example.data.LocalDateAdapter
 import com.example.data.Person
-import com.example.data.PersonHistory
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -69,7 +68,7 @@ class SecureBackupManager {
         private const val FORMAT = "SMART_OSM_SECURE_BACKUP"
         private const val FORMAT_VERSION = 1
         private const val APPLICATION_ID = "com.aistudio.populationreg.xqzr"
-        private const val DATABASE_SCHEMA_VERSION = 9
+        private const val DATABASE_SCHEMA_VERSION = 10
         private const val KDF = "PBKDF2WithHmacSHA256"
         private const val ITERATIONS = 120_000
         private const val KEY_BITS = 256
