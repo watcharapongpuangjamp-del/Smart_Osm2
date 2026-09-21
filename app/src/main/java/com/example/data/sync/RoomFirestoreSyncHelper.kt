@@ -46,6 +46,7 @@ suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { cont ->
 data class SyncResult(
     val householdsSynced: Int = 0,
     val personsSynced: Int = 0,
+    val deletionsSynced: Int = 0,
     val message: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -248,7 +249,28 @@ open class RoomFirestoreSyncHelper(
                 return@withContext Result.failure(err)
             }
 
-            // Fetch tombstones to prevent re-uploading deleted records
+            // Local deletions are journaled so Push can converge Cloud to the Local master.
+            // Clear each journal entry only after its Firestore deletion/tombstone succeeds.
+            val pendingDeletions = repository.getPendingDeletions()
+            var deletionsSynced = 0
+            if (pendingDeletions.isNotEmpty()) {
+                _syncState.value = SyncState.Syncing("กำลังส่งรายการลบจากฐานข้อมูลภายในไปยัง Cloud...")
+                for (deletion in pendingDeletions) {
+                    val result = when (deletion.entityType) {
+                        "HOUSEHOLD" -> deleteHouseholdFromFirestore(deletion.entityUuid)
+                        "PERSON" -> deletePersonFromFirestore(deletion.entityUuid)
+                        else -> Result.failure(IllegalStateException("ไม่รู้จักประเภทการลบ: ${deletion.entityType}"))
+                    }
+                    if (result.isFailure) {
+                        throw result.exceptionOrNull()
+                            ?: IllegalStateException("ไม่สามารถส่งรายการลบ ${deletion.entityType}:${deletion.entityUuid} ไปยัง Cloud")
+                    }
+                    repository.clearPendingDeletion(deletion)
+                    deletionsSynced++
+                }
+            }
+
+            // Refresh tombstones after processing the local deletion journal.
             val tombstoneDocs = firestore.collection(COLLECTION_TOMBSTONES).get().await()
             val deletedUuids = tombstoneDocs.documents.mapNotNull { it.getString("uuid") }.toSet()
 
@@ -308,7 +330,8 @@ open class RoomFirestoreSyncHelper(
             val result = SyncResult(
                 householdsSynced = householdsSynced,
                 personsSynced = personsSynced,
-                message = "ซิงค์ข้อมูลไปยัง Firestore สำเร็จ ($householdsSynced ครัวเรือน, $personsSynced คน)"
+                deletionsSynced = deletionsSynced,
+                message = "ซิงค์ข้อมูลไปยัง Firestore สำเร็จ ($householdsSynced ครัวเรือน, $personsSynced คน, ลบ $deletionsSynced รายการ)"
             )
             _syncState.value = SyncState.Success(result)
             Result.success(result)
