@@ -30,6 +30,9 @@ interface HouseholdDao {
     @Query("SELECT * FROM households ORDER BY houseNo ASC")
     suspend fun getAllHouseholds(): List<Household>
 
+    @Query("DELETE FROM households")
+    suspend fun deleteAll()
+
     @Query("SELECT COUNT(*) FROM households")
     fun getTotalHouseholdsCount(): Flow<Int>
 
