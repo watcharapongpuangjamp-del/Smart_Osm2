@@ -42,6 +42,8 @@ class ChildResurrectionTest {
         var saveCalled = false
 
         val syncHelper = object : RoomFirestoreSyncHelper(context, repository, { null }) {
+            override fun requireAuthenticatedFirebaseUser() {}
+
             override suspend fun checkTombstoneExists(uuid: String, type: String): Boolean {
                 if (type == "person" && uuid == "P-001") return false
                 if (type == "household" && uuid == "H-001") return true
@@ -81,6 +83,8 @@ class ChildResurrectionTest {
         var saveCalled = false
 
         val syncHelper = object : RoomFirestoreSyncHelper(context, repository, { null }) {
+            override fun requireAuthenticatedFirebaseUser() {}
+
             override suspend fun checkTombstoneExists(uuid: String, type: String): Boolean {
                 if (type == "person" && uuid == "P-002") return true
                 if (type == "household" && uuid == "H-001") return false
@@ -120,6 +124,8 @@ class ChildResurrectionTest {
         var saveCalled = false
 
         val syncHelper = object : RoomFirestoreSyncHelper(context, repository, { null }) {
+            override fun requireAuthenticatedFirebaseUser() {}
+
             override suspend fun checkTombstoneExists(uuid: String, type: String): Boolean {
                 return false // No tombstones exist
             }
