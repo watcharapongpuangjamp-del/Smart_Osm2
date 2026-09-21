@@ -110,8 +110,7 @@ open class RoomFirestoreSyncHelper(
             ?: throw IllegalStateException("ระบบ Cloud (Firebase) ยังไม่ได้ตั้งค่าในโปรเจกต์นี้ กรุณาใช้งานฐานข้อมูลภายใน (Room) แทน")
     }
 
-    @androidx.annotation.VisibleForTesting
-    internal open fun requireAuthenticatedFirebaseUser() {
+    protected open fun requireAuthenticatedFirebaseUser() {
         val user = try {
             FirebaseAuth.getInstance().currentUser
         } catch (e: Exception) {
@@ -407,15 +406,13 @@ open class RoomFirestoreSyncHelper(
         }
     }
 
-    @androidx.annotation.VisibleForTesting
-    internal open suspend fun checkTombstoneExists(uuid: String, type: String): Boolean {
+    protected open suspend fun checkTombstoneExists(uuid: String, type: String): Boolean {
         return getFirestore().collection(COLLECTION_TOMBSTONES)
             .document("${type}_${uuid}")
             .get().await().exists()
     }
 
-    @androidx.annotation.VisibleForTesting
-    internal open suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
+    protected open suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
         transactionalPersonSave(person, householdUuid, householdHouseNo)
     }
 
