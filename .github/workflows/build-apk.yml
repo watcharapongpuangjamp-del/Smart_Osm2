@@ -98,3 +98,64 @@ jobs:
             -keypass android | grep -E "Owner:|SHA1:|SHA256:"
           echo "===================================="
 
+
+      # Run unit tests before assembling APK
+      - name: Run Unit Tests
+        run: |
+          echo "Running unit tests..."
+          gradle testDebugUnitTest --stacktrace --no-daemon
+        env:
+          MAPS_API_KEY: placeholder_maps_api_key_ci_build
+        continue-on-error: true
+
+      - name: Build Debug APK
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.build_type == 'debug'
+        run: |
+          echo "Building Debug APK..."
+          gradle assembleDebug --stacktrace --no-daemon
+        env:
+          MAPS_API_KEY: placeholder_maps_api_key_ci_build
+
+      - name: Build Release APK
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_type == 'release'
+        run: |
+          echo "Building Release APK..."
+          gradle assembleRelease --stacktrace --no-daemon
+        env:
+          MAPS_API_KEY: placeholder_maps_api_key_ci_build
+
+      - name: Upload Debug APK
+        if: (github.event_name != 'workflow_dispatch' || github.event.inputs.build_type == 'debug') && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Release APK
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_type == 'release' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Print Build Status
+        if: always()
+        run: |
+          echo "Build Status: ${{ job.status }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Branch: ${{ github.ref_name }}"
