@@ -2,6 +2,7 @@ package com.example.data
 
 import android.util.Log
 import com.example.data.backup.BackupHistoryRecord
+import com.example.data.backup.BackupDeletionRecord
 import com.example.data.backup.BackupPayload
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -188,7 +189,10 @@ class PersonRepository(
                 source = item.source
             )
         }
-        return BackupPayload(households = households, persons = persons, history = history)
+        val deletions = syncDeletionDao.getAll().map {
+            BackupDeletionRecord(it.entityType, it.entityUuid, it.deletedAt)
+        }
+        return BackupPayload(households = households, persons = persons, history = history, deletions = deletions)
     }
 
     suspend fun restoreBackupPayload(payload: BackupPayload) {
@@ -196,6 +200,7 @@ class PersonRepository(
             personHistoryDao.deleteAll()
             personDao.deleteAll()
             householdDao.deleteAll()
+            syncDeletionDao.deleteAll()
 
             val householdIdByUuid = mutableMapOf<String, Long>()
             payload.households.forEach { household ->
@@ -231,6 +236,16 @@ class PersonRepository(
                 )
             }
             if (restoredHistory.isNotEmpty()) personHistoryDao.insertAll(restoredHistory)
+
+            payload.deletions.forEach { deletion ->
+                syncDeletionDao.upsert(
+                    SyncDeletion(
+                        entityType = deletion.entityType,
+                        entityUuid = deletion.entityUuid,
+                        deletedAt = deletion.deletedAt
+                    )
+                )
+            }
         }
     }
 }
