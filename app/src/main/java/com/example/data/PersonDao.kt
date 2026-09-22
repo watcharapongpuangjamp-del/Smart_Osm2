@@ -33,6 +33,26 @@ interface PersonDao {
 
     @Query("SELECT * FROM persons WHERE personUuid = :uuid LIMIT 1")
     suspend fun getPersonByUuid(uuid: String): Person?
+
+    @Query("""
+        UPDATE persons
+        SET lastModified = :lastModified,
+            serverUpdatedAt = :serverUpdatedAt,
+            version = :version,
+            updatedBy = :updatedBy,
+            updatedFrom = :updatedFrom,
+            isDeleted = :isDeleted
+        WHERE personUuid = :uuid
+    """)
+    suspend fun updateSyncMetadata(
+        uuid: String,
+        lastModified: Long,
+        serverUpdatedAt: Long?,
+        version: Long,
+        updatedBy: String?,
+        updatedFrom: String?,
+        isDeleted: Boolean
+    )
     
     @Query("SELECT * FROM persons WHERE nationalId = :nationalId LIMIT 1")
     suspend fun getPersonByNationalId(nationalId: String): Person?
