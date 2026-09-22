@@ -208,7 +208,6 @@ open class RoomFirestoreSyncHelper(
         household: Household,
         remote: DocumentSnapshot?
     ): Map<String, Any?> {
-        val now = System.currentTimeMillis()
         return householdToMap(household) + mapOf(
             "version" to nextVersion(household.version, remote?.getLong("version")),
             "serverUpdatedAt" to FieldValue.serverTimestamp(),
@@ -253,7 +252,6 @@ open class RoomFirestoreSyncHelper(
         householdHouseNo: String,
         remote: DocumentSnapshot?
     ): Map<String, Any?> {
-        val now = System.currentTimeMillis()
         return personToMap(person, householdUuid, householdHouseNo) + mapOf(
             "version" to nextVersion(person.version, remote?.getLong("version")),
             "serverUpdatedAt" to FieldValue.serverTimestamp(),
@@ -456,6 +454,7 @@ open class RoomFirestoreSyncHelper(
             }
             
             performPersonSave(person, householdUuid, householdHouseNo)
+            refreshPersonSyncMetadata(person.personUuid)
 
             val result = SyncResult(
                 householdsSynced = 0,
