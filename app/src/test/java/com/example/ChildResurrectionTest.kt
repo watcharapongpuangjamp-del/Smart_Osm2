@@ -53,6 +53,10 @@ class ChildResurrectionTest {
             override suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
                 saveCalled = true
             }
+
+            override suspend fun refreshPersonSyncMetadata(uuid: String) {
+                // No Firebase read-back in this isolated tombstone unit test.
+            }
         }
         
         val person = Person(
@@ -94,6 +98,10 @@ class ChildResurrectionTest {
             override suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
                 saveCalled = true
             }
+
+            override suspend fun refreshPersonSyncMetadata(uuid: String) {
+                // No Firebase read-back in this isolated tombstone unit test.
+            }
         }
         
         val person = Person(
@@ -132,6 +140,10 @@ class ChildResurrectionTest {
 
             override suspend fun performPersonSave(person: Person, householdUuid: String, householdHouseNo: String) {
                 saveCalled = true
+            }
+
+            override suspend fun refreshPersonSyncMetadata(uuid: String) {
+                // No Firebase read-back in this isolated tombstone unit test.
             }
         }
         
