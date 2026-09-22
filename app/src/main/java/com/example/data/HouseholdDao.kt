@@ -23,6 +23,26 @@ interface HouseholdDao {
     @Query("SELECT * FROM households WHERE householdUuid = :uuid LIMIT 1")
     suspend fun getHouseholdByUuid(uuid: String): Household?
 
+    @Query("""
+        UPDATE households
+        SET lastModified = :lastModified,
+            serverUpdatedAt = :serverUpdatedAt,
+            version = :version,
+            updatedBy = :updatedBy,
+            updatedFrom = :updatedFrom,
+            isDeleted = :isDeleted
+        WHERE householdUuid = :uuid
+    """)
+    suspend fun updateSyncMetadata(
+        uuid: String,
+        lastModified: Long,
+        serverUpdatedAt: Long?,
+        version: Long,
+        updatedBy: String?,
+        updatedFrom: String?,
+        isDeleted: Boolean
+    )
+
     @Transaction
     @Query("SELECT * FROM households ORDER BY houseNo ASC")
     fun getHouseholdsWithPersons(): Flow<List<HouseholdWithPersons>>
