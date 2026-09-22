@@ -217,7 +217,7 @@ open class RoomFirestoreSyncHelper(
         )
     }
 
-    private suspend fun refreshHouseholdSyncMetadata(uuid: String) {
+    protected open suspend fun refreshHouseholdSyncMetadata(uuid: String) {
         val doc = getFirestore().collection(COLLECTION_HOUSEHOLDS).document(uuid).get().await()
         if (!doc.exists()) return
         repository.updateHouseholdSyncMetadata(
@@ -232,7 +232,7 @@ open class RoomFirestoreSyncHelper(
         )
     }
 
-    private suspend fun refreshPersonSyncMetadata(uuid: String) {
+    protected open suspend fun refreshPersonSyncMetadata(uuid: String) {
         val doc = getFirestore().collection(COLLECTION_PERSONS).document(uuid).get().await()
         if (!doc.exists()) return
         repository.updatePersonSyncMetadata(
