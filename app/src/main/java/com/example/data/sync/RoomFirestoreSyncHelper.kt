@@ -212,6 +212,7 @@ open class RoomFirestoreSyncHelper(
             "version" to nextVersion(household.version, remote?.getLong("version")),
             "serverUpdatedAt" to FieldValue.serverTimestamp(),
             "updatedAt" to household.lastModified,
+            "updatedBy" to (household.updatedBy ?: FirebaseAuth.getInstance().currentUser?.uid),
             "updatedFrom" to (household.updatedFrom ?: "android")
         )
     }
@@ -256,6 +257,7 @@ open class RoomFirestoreSyncHelper(
             "version" to nextVersion(person.version, remote?.getLong("version")),
             "serverUpdatedAt" to FieldValue.serverTimestamp(),
             "updatedAt" to person.lastModified,
+            "updatedBy" to (person.updatedBy ?: FirebaseAuth.getInstance().currentUser?.uid),
             "updatedFrom" to (person.updatedFrom ?: "android")
         )
     }
