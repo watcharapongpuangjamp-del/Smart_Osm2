@@ -169,6 +169,50 @@ class PersonRepository(
     suspend fun getPersonByUuid(uuid: String): Person? {
         return personDao.getPersonByUuid(uuid)
     }
+
+    /**
+     * Persists Cloud synchronization metadata without creating a user edit/history entry.
+     * This keeps Local data authoritative while recording the Cloud commit state locally.
+     */
+    suspend fun updateHouseholdSyncMetadata(
+        uuid: String,
+        lastModified: Long,
+        serverUpdatedAt: Long?,
+        version: Long,
+        updatedBy: String?,
+        updatedFrom: String?,
+        isDeleted: Boolean
+    ) {
+        householdDao.updateSyncMetadata(
+            uuid = uuid,
+            lastModified = lastModified,
+            serverUpdatedAt = serverUpdatedAt,
+            version = version,
+            updatedBy = updatedBy,
+            updatedFrom = updatedFrom,
+            isDeleted = isDeleted
+        )
+    }
+
+    suspend fun updatePersonSyncMetadata(
+        uuid: String,
+        lastModified: Long,
+        serverUpdatedAt: Long?,
+        version: Long,
+        updatedBy: String?,
+        updatedFrom: String?,
+        isDeleted: Boolean
+    ) {
+        personDao.updateSyncMetadata(
+            uuid = uuid,
+            lastModified = lastModified,
+            serverUpdatedAt = serverUpdatedAt,
+            version = version,
+            updatedBy = updatedBy,
+            updatedFrom = updatedFrom,
+            isDeleted = isDeleted
+        )
+    }
     
     fun getHistoryForPerson(personId: Long): Flow<List<PersonHistory>> {
         return personHistoryDao.getHistoryForPerson(personId)
