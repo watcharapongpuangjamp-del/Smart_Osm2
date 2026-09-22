@@ -179,4 +179,59 @@ class RoomFirestoreSyncHelperTest {
         assertTrue(chunks[0].contains(listOf("TOMBSTONE: person_P-LARGE-1", "DELETE: person_P-LARGE-1")))
         assertTrue(chunks[1].contains(listOf("TOMBSTONE: household_H-LARGE-001", "DELETE: household_H-LARGE-001")))
     }
+    @Test
+    fun testCloudSyncMetadataWritebackDoesNotCreateLocalHistory() = runBlocking {
+        val household = Household(
+            householdUuid = "H-META-001",
+            houseNo = "10",
+            villageNo = "8",
+            subdistrict = "ป่าขะ",
+            district = "บ้านนา",
+            province = "นครนายก",
+            lastModified = 100L
+        )
+        val hId = repository.insertHousehold(household)
+
+        repository.updateHouseholdSyncMetadata(
+            uuid = household.householdUuid,
+            lastModified = 100L,
+            serverUpdatedAt = 200L,
+            version = 2L,
+            updatedBy = "firebase-user",
+            updatedFrom = "android",
+            isDeleted = false
+        )
+
+        val savedHousehold = repository.getHouseholdByUuid(household.householdUuid)
+        assertEquals(2L, savedHousehold?.version)
+        assertEquals(200L, savedHousehold?.serverUpdatedAt)
+        assertEquals("firebase-user", savedHousehold?.updatedBy)
+        assertEquals(100L, savedHousehold?.lastModified)
+
+        val person = Person(
+            personUuid = "P-META-001",
+            householdId = hId,
+            nationalId = "1111111111111",
+            fullName = "ทดสอบ Metadata",
+            lastModified = 300L
+        )
+        repository.insert(person)
+
+        repository.updatePersonSyncMetadata(
+            uuid = person.personUuid,
+            lastModified = 300L,
+            serverUpdatedAt = 400L,
+            version = 3L,
+            updatedBy = "firebase-user",
+            updatedFrom = "android",
+            isDeleted = false
+        )
+
+        val savedPerson = repository.getPersonByUuid(person.personUuid)
+        assertEquals(3L, savedPerson?.version)
+        assertEquals(400L, savedPerson?.serverUpdatedAt)
+        assertEquals("firebase-user", savedPerson?.updatedBy)
+        assertEquals(300L, savedPerson?.lastModified)
+    }
+
 }
