@@ -12,6 +12,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.junit.After
@@ -36,7 +37,7 @@ class LastModifiedRegressionTest {
     private lateinit var viewModel: PersonViewModel
     private lateinit var context: Context
 
-    private val testDispatcher = kotlinx.coroutines.test.UnconfinedTestDispatcher()
+    private val testDispatcher = StandardTestDispatcher()
 
     @Before
     fun setup() {
@@ -73,7 +74,7 @@ class LastModifiedRegressionTest {
     }
 
     @Test
-    fun testPersonUpdateChangesLastModified() = runBlocking {
+    fun testPersonUpdateChangesLastModified() = runTest(testDispatcher) {
         val pastTimestamp = 1_000_000L
 
         // 1. Insert household and person with explicit past lastModified
@@ -119,7 +120,7 @@ class LastModifiedRegressionTest {
     }
 
     @Test
-    fun testHouseholdUpdateChangesLastModified() = runBlocking {
+    fun testHouseholdUpdateChangesLastModified() = runTest(testDispatcher) {
         val pastTimestamp = 2_000_000L
 
         // 1. Insert household with explicit past lastModified
@@ -154,7 +155,7 @@ class LastModifiedRegressionTest {
     }
 
     @Test
-    fun testExcelImportUpdateChangesLastModified() = runBlocking {
+    fun testExcelImportUpdateChangesLastModified() = runTest(testDispatcher) {
         val pastTimestamp = 3_000_000L
         val targetPersonUuid = "P-EXCEL-MOD-01"
 
@@ -223,7 +224,7 @@ class LastModifiedRegressionTest {
     }
 
     @Test
-    fun testRoomPersistsCustomLastModified() = runBlocking {
+    fun testRoomPersistsCustomLastModified() = runTest(testDispatcher) {
         val customTimestamp = 9876543210L
 
         val household = Household(
