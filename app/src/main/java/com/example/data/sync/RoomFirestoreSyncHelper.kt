@@ -13,6 +13,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.Dispatchers
@@ -210,9 +211,39 @@ open class RoomFirestoreSyncHelper(
         val now = System.currentTimeMillis()
         return householdToMap(household) + mapOf(
             "version" to nextVersion(household.version, remote?.getLong("version")),
-            "serverUpdatedAt" to now,
-            "updatedAt" to now,
+            "serverUpdatedAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to household.lastModified,
             "updatedFrom" to (household.updatedFrom ?: "android")
+        )
+    }
+
+    private suspend fun refreshHouseholdSyncMetadata(uuid: String) {
+        val doc = getFirestore().collection(COLLECTION_HOUSEHOLDS).document(uuid).get().await()
+        if (!doc.exists()) return
+        repository.updateHouseholdSyncMetadata(
+            uuid = uuid,
+            lastModified = doc.getLong("updatedAt") ?: System.currentTimeMillis(),
+            serverUpdatedAt = doc.getTimestamp("serverUpdatedAt")?.toDate()?.time
+                ?: doc.getLong("serverUpdatedAt"),
+            version = doc.getLong("version") ?: 0L,
+            updatedBy = doc.getString("updatedBy"),
+            updatedFrom = doc.getString("updatedFrom"),
+            isDeleted = doc.getBoolean("isDeleted") == true
+        )
+    }
+
+    private suspend fun refreshPersonSyncMetadata(uuid: String) {
+        val doc = getFirestore().collection(COLLECTION_PERSONS).document(uuid).get().await()
+        if (!doc.exists()) return
+        repository.updatePersonSyncMetadata(
+            uuid = uuid,
+            lastModified = doc.getLong("updatedAt") ?: System.currentTimeMillis(),
+            serverUpdatedAt = doc.getTimestamp("serverUpdatedAt")?.toDate()?.time
+                ?: doc.getLong("serverUpdatedAt"),
+            version = doc.getLong("version") ?: 0L,
+            updatedBy = doc.getString("updatedBy"),
+            updatedFrom = doc.getString("updatedFrom"),
+            isDeleted = doc.getBoolean("isDeleted") == true
         )
     }
 
@@ -225,8 +256,8 @@ open class RoomFirestoreSyncHelper(
         val now = System.currentTimeMillis()
         return personToMap(person, householdUuid, householdHouseNo) + mapOf(
             "version" to nextVersion(person.version, remote?.getLong("version")),
-            "serverUpdatedAt" to now,
-            "updatedAt" to now,
+            "serverUpdatedAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to person.lastModified,
             "updatedFrom" to (person.updatedFrom ?: "android")
         )
     }
@@ -276,54 +307,42 @@ open class RoomFirestoreSyncHelper(
             val households = repository.getAllHouseholds().filter { !deletedUuids.contains(it.householdUuid) }
             val persons = repository.getAllPersonsList().filter { !deletedUuids.contains(it.personUuid) }
 
-            val cloudHouseholds = firestore.collection(COLLECTION_HOUSEHOLDS).get().await().documents.associateBy { it.id }
-            val cloudPersons = firestore.collection(COLLECTION_PERSONS).get().await().documents.associateBy { it.id }
-
-            _syncState.value = SyncState.Syncing("กำลังตรวจสอบเวอร์ชันข้อมูลก่อนส่งขึ้น Firestore...")
+            _syncState.value = SyncState.Syncing("กำลังตรวจสอบและส่งข้อมูลจาก Local ไปยัง Firestore แบบป้องกันข้อมูลชนกัน...")
 
             val householdMap = households.associateBy { it.id }
-
-            // Write households and persons in batches (Firestore max 500 per batch, we use 400 safely)
-            var batch = firestore.batch()
-            var opsInBatch = 0
             var householdsSynced = 0
             var personsSynced = 0
 
+            // Each document is written through a Firestore transaction. The transaction
+            // reads the current Cloud version immediately before writing, so a stale
+            // pre-read cannot overwrite a concurrent Cloud edit.
             for (h in households) {
-                val remote = cloudHouseholds[h.householdUuid]
-                if (remote != null && !shouldUpload(localMetadata(h), remoteMetadata(remote))) continue
-                val docRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(h.householdUuid)
-                val data = householdToVersionedMap(h, remote)
-                batch.set(docRef, data, SetOptions.merge())
-                opsInBatch++
-                householdsSynced++
-
-                if (opsInBatch >= 400) {
-                    batch.commit().await()
-                    batch = firestore.batch()
-                    opsInBatch = 0
+                try {
+                    transactionalHouseholdSave(h)
+                    refreshHouseholdSyncMetadata(h.householdUuid)
+                    householdsSynced++
+                } catch (e: IllegalStateException) {
+                    if (e.message?.contains("Cloud มีข้อมูลครัวเรือนใหม่กว่า") == true) {
+                        Log.w(TAG, "Skipping household ${h.householdUuid}: Cloud is newer")
+                    } else {
+                        throw e
+                    }
                 }
             }
 
             for (p in persons) {
                 val parentHousehold = householdMap[p.householdId] ?: continue
-                val remote = cloudPersons[p.personUuid]
-                if (remote != null && !shouldUpload(localMetadata(p), remoteMetadata(remote))) continue
-                val docRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
-                val data = personToVersionedMap(p, parentHousehold.householdUuid, parentHousehold.houseNo, remote)
-                batch.set(docRef, data, SetOptions.merge())
-                opsInBatch++
-                personsSynced++
-
-                if (opsInBatch >= 400) {
-                    batch.commit().await()
-                    batch = firestore.batch()
-                    opsInBatch = 0
+                try {
+                    transactionalPersonSave(p, parentHousehold.householdUuid, parentHousehold.houseNo)
+                    refreshPersonSyncMetadata(p.personUuid)
+                    personsSynced++
+                } catch (e: IllegalStateException) {
+                    if (e.message?.contains("Cloud มีข้อมูลบุคคลใหม่กว่า") == true) {
+                        Log.w(TAG, "Skipping person ${p.personUuid}: Cloud is newer")
+                    } else {
+                        throw e
+                    }
                 }
-            }
-
-            if (opsInBatch > 0) {
-                batch.commit().await()
             }
 
             val result = SyncResult(
