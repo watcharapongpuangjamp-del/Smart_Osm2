@@ -26,12 +26,14 @@ import com.example.data.sync.SyncState
 import com.example.ui.components.ThemeQuickToggleButton
 import com.example.ui.theme.EmeraldPrimary
 import com.example.viewmodel.PersonViewModel
+import com.example.domain.CommunityLocationReferenceImportUseCase
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CloudSyncScreen(
     viewModel: PersonViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    communityLocationImportUseCase: CommunityLocationReferenceImportUseCase
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -48,6 +50,11 @@ fun CloudSyncScreen(
     var showRestorePreview by remember { mutableStateOf(false) }
     var backupAction by remember { mutableStateOf<String?>(null) }
     var backupInfo by remember { mutableStateOf<com.example.data.backup.BackupInfo?>(null) }
+    var communityImportJson by remember { mutableStateOf<String?>(null) }
+    var communityImportFileName by remember { mutableStateOf("") }
+    var communityImportPreview by remember { mutableStateOf<com.example.domain.CommunityLocationImportReport?>(null) }
+    var showCommunityImportPreview by remember { mutableStateOf(false) }
+    var communityImportBusy by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -79,6 +86,25 @@ fun CloudSyncScreen(
             backupUri = it
             backupAction = "restore"
             showBackupPasswordDialog = true
+        }
+    }
+    
+    val communityLocationJsonLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            try {
+                val json = context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() }
+                    ?: throw IllegalStateException("ไม่สามารถอ่านไฟล์ JSON ได้")
+                val preview = communityLocationImportUseCase.previewJson(json, "file:${it.lastPathSegment ?: "json"}")
+                communityImportJson = json
+                communityImportFileName = it.lastPathSegment ?: "community_location.json"
+                communityImportPreview = preview
+                showCommunityImportPreview = true
+            } catch (e: Exception) {
+                isError = true
+                actionMessage = "ตรวจสอบไฟล์ชุมชนไม่สำเร็จ: ${e.message}"
+            }
         }
     }
 
@@ -297,7 +323,50 @@ fun CloudSyncScreen(
                 }
             }
 
-            // Section 3: Cloud Firestore Redundancy & Sync
+            // Section 3: Community Location Reference Import
+            Text(
+                text = "3. ข้อมูลอ้างอิงชุมชน / หมู่บ้าน",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = EmeraldPrimary
+            )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "นำเข้าไฟล์ JSON ข้อมูลอ้างอิงระดับหมู่บ้านเพื่อใช้เป็น Master Location/ข้อมูลประกอบ " +
+                            "ระบบจะตรวจสอบก่อน และยังไม่เขียน Room จนกว่าจะกดยืนยัน"
+                    )
+                    Button(
+                        onClick = {
+                            communityLocationJsonLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                        },
+                        enabled = !communityImportBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
+                    ) {
+                        Icon(Icons.Filled.LocationOn, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("เลือกไฟล์ JSON และตรวจสอบ", fontWeight = FontWeight.Bold)
+                    }
+                    Text(
+                        "การนำเข้าจะไม่แก้พิกัดหรือข้อมูล Household/Person",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Section 4: Cloud Firestore Redundancy & Sync
             Text(
                 text = "3. Cloud Backup / Recovery",
                 style = MaterialTheme.typography.titleMedium,
@@ -358,6 +427,91 @@ fun CloudSyncScreen(
             }
         }
     }
+    if (showCommunityImportPreview) {
+        val preview = communityImportPreview
+        AlertDialog(
+            onDismissRequest = {
+                if (!communityImportBusy) {
+                    showCommunityImportPreview = false
+                    communityImportJson = null
+                    communityImportPreview = null
+                }
+            },
+            title = { Text("ตรวจสอบข้อมูลอ้างอิงชุมชน") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(communityImportFileName, fontWeight = FontWeight.Bold)
+                    preview?.let {
+                        Text("รายการที่อ่านได้: ${it.parsed}")
+                        Text("ผ่านการตรวจสอบ: ${it.accepted}")
+                        Text("ถูกปฏิเสธ: ${it.rejected}")
+                        Text("จังหวัด: ${it.provinces}  อำเภอ: ${it.districts}")
+                        Text("ตำบล: ${it.subdistricts}  หมู่บ้าน: ${it.villages}")
+                        Text("มีพิกัด: ${it.coordinates}")
+                        if (it.warnings.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text("คำเตือน ${it.warnings.size} รายการ", fontWeight = FontWeight.Bold)
+                            it.warnings.take(8).forEach { warning ->
+                                Text("• $warning", style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (it.warnings.size > 8) {
+                                Text("… และอีก ${it.warnings.size - 8} รายการ", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    Text(
+                        "ยืนยันแล้วจึงจะล้างชุดข้อมูลอ้างอิงเดิมและแทนที่ด้วยชุดที่ผ่านการตรวจสอบทั้งหมด",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = preview != null && preview.accepted > 0 && !communityImportBusy,
+                    onClick = {
+                        val json = communityImportJson ?: return@TextButton
+                        communityImportBusy = true
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                            try {
+                                val result = communityLocationImportUseCase.importJson(
+                                    json,
+                                    "file:${communityImportFileName}"
+                                )
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    communityImportBusy = false
+                                    showCommunityImportPreview = false
+                                    communityImportJson = null
+                                    communityImportPreview = null
+                                    actionMessage = "นำเข้าข้อมูลชุมชนสำเร็จ ${result.stored} หมู่บ้าน"
+                                    isError = false
+                                }
+                            } catch (e: Exception) {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    communityImportBusy = false
+                                    isError = true
+                                    actionMessage = "นำเข้าไม่สำเร็จ: ${e.message}"
+                                }
+                            }
+                        }
+                    }
+                ) { Text(if (communityImportBusy) "กำลังนำเข้า..." else "ยืนยันนำเข้า") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !communityImportBusy,
+                    onClick = {
+                        showCommunityImportPreview = false
+                        communityImportJson = null
+                        communityImportPreview = null
+                    }
+                ) { Text("ยกเลิก") }
+            }
+        )
+    }
+
     if (showBackupPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showBackupPasswordDialog = false; backupPassword = "" },
