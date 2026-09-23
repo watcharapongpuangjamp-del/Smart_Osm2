@@ -13,6 +13,13 @@ android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
+  val releaseSigningConfigured = listOf(
+    System.getenv("KEYSTORE_PATH"),
+    System.getenv("STORE_PASSWORD"),
+    System.getenv("KEY_ALIAS"),
+    System.getenv("KEY_PASSWORD")
+  ).all { !it.isNullOrBlank() }
+
   defaultConfig {
     applicationId = "com.aistudio.populationreg.xqzr"
     minSdk = 26
@@ -26,11 +33,15 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+      // Production signing is used only when all four release credentials are supplied.
+      // CI/internal release builds otherwise fall back to the stable debug keystore so
+      // assembleRelease remains buildable without requiring a private upload key.
+      val keystorePath = System.getenv("KEYSTORE_PATH")
+        ?: "${rootDir}/debug.keystore"
       storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      storePassword = System.getenv("STORE_PASSWORD") ?: "android"
+      keyAlias = System.getenv("KEY_ALIAS") ?: "androiddebugkey"
+      keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -45,7 +56,11 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      signingConfig = if (releaseSigningConfigured) {
+        signingConfigs.getByName("release")
+      } else {
+        signingConfigs.getByName("debugConfig")
+      }
     }
     debug { signingConfig = signingConfigs.getByName("debugConfig") }
   }
