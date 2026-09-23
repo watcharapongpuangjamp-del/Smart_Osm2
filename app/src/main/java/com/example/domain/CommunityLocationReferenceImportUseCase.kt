@@ -8,29 +8,58 @@ data class CommunityLocationImportReport(
     val accepted: Int,
     val rejected: Int,
     val warnings: List<String>,
-    val stored: Int
+    val stored: Int,
+    val provinces: Int = 0,
+    val districts: Int = 0,
+    val subdistricts: Int = 0,
+    val villages: Int = 0,
+    val coordinates: Int = 0
 )
 
 class CommunityLocationReferenceImportUseCase(
     private val dao: CommunityLocationReferenceDao
 ) {
+    /**
+     * Preview is read-only: it parses and validates the complete dataset but does not touch Room.
+     */
+    fun previewJson(json: String, sourceVersion: String = ""): CommunityLocationImportReport {
+        val parsedItems = CommunityLocationReferenceJsonImporter.parse(json, sourceVersion)
+        val validation = CommunityLocationReferenceValidator.validate(parsedItems)
+        return validation.toReport(parsedItems.size, stored = 0)
+    }
+
+    /**
+     * Replace is atomic: Room either replaces the reference dataset completely or leaves
+     * the previous dataset untouched when parsing/validation fails before the transaction.
+     */
     suspend fun importJson(json: String, sourceVersion: String = ""): CommunityLocationImportReport {
         val parsedItems = CommunityLocationReferenceJsonImporter.parse(json, sourceVersion)
         val validation = CommunityLocationReferenceValidator.validate(parsedItems)
 
-        // Reference data is replaceable as a dataset, but only validated rows are stored.
-        // It never modifies Household/Person records.
-        dao.deleteAll()
-        if (validation.accepted.isNotEmpty()) {
-            dao.upsertAll(validation.accepted)
+        if (validation.accepted.isEmpty() && parsedItems.isNotEmpty()) {
+            throw IllegalStateException("ไม่พบข้อมูลชุมชนที่ผ่านการตรวจสอบสำหรับนำเข้า")
         }
 
+        dao.replaceAll(validation.accepted)
+        return validation.toReport(parsedItems.size, stored = dao.count())
+    }
+
+    private fun CommunityLocationValidation.toReport(
+        parsed: Int,
+        stored: Int
+    ): CommunityLocationImportReport {
+        val accepted = accepted
         return CommunityLocationImportReport(
-            parsed = parsedItems.size,
-            accepted = validation.accepted.size,
-            rejected = validation.rejected.size,
-            warnings = validation.warnings,
-            stored = dao.count()
+            parsed = parsed,
+            accepted = accepted.size,
+            rejected = rejected.size,
+            warnings = warnings,
+            stored = stored,
+            provinces = accepted.map { it.pcode }.distinct().size,
+            districts = accepted.map { it.acode }.distinct().size,
+            subdistricts = accepted.map { it.tcode }.distinct().size,
+            villages = accepted.map { it.mcode }.distinct().size,
+            coordinates = accepted.count { it.latitude != null && it.longitude != null }
         )
     }
 }
