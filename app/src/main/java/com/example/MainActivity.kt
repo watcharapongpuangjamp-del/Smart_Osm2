@@ -50,6 +50,9 @@ class MainActivity : FragmentActivity() {
         ).build()
         val repository = PersonRepository(db, db.personDao(), db.householdDao(), db.personHistoryDao())
         val excelImportUseCase = com.example.domain.ExcelImportUseCase(db)
+        val communityLocationImportUseCase = com.example.domain.CommunityLocationReferenceImportUseCase(
+            db.communityLocationReferenceDao()
+        )
         val syncHelper = com.example.data.sync.RoomFirestoreSyncHelper(
             applicationContext,
             repository,
@@ -83,6 +86,7 @@ class MainActivity : FragmentActivity() {
                         viewModel = viewModel,
                         repository = repository,
                         firestore = FirestoreManager.getInstance(),
+                        communityLocationImportUseCase = communityLocationImportUseCase,
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
