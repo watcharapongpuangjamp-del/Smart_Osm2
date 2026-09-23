@@ -368,7 +368,7 @@ fun CloudSyncScreen(
 
             // Section 4: Cloud Firestore Redundancy & Sync
             Text(
-                text = "3. Cloud Backup / Recovery",
+                text = "4. Cloud Backup / Recovery",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = EmeraldPrimary
