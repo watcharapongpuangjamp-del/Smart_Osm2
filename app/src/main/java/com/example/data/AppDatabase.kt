@@ -6,13 +6,14 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Person::class, Household::class, PersonHistory::class, SyncDeletion::class], version = 10, exportSchema = true)
+@Database(entities = [Person::class, Household::class, PersonHistory::class, SyncDeletion::class, CommunityLocationReference::class], version = 11, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun personDao(): PersonDao
     abstract fun householdDao(): HouseholdDao
     abstract fun personHistoryDao(): PersonHistoryDao
     abstract fun syncDeletionDao(): SyncDeletionDao
+    abstract fun communityLocationReferenceDao(): CommunityLocationReferenceDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) {} }
@@ -118,6 +119,53 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_sync_deletion_journal_entityType_entityUuid ON sync_deletion_journal (entityType, entityUuid)")
+            }
+        }
+    }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS community_location_reference (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        pcode TEXT NOT NULL,
+                        pname TEXT NOT NULL,
+                        acode TEXT NOT NULL,
+                        aname TEXT NOT NULL,
+                        tcode TEXT NOT NULL,
+                        tname TEXT NOT NULL,
+                        mcode TEXT NOT NULL,
+                        mname TEXT NOT NULL,
+                        latitude REAL,
+                        longitude REAL,
+                        femaleCount INTEGER,
+                        maleCount INTEGER,
+                        populationTotal INTEGER,
+                        householdTotal INTEGER,
+                        localAuthority TEXT,
+                        localAuthorityName TEXT,
+                        roadName TEXT,
+                        roadNumber TEXT,
+                        roadDistance REAL,
+                        riverName TEXT,
+                        seaName TEXT,
+                        lagoonName TEXT,
+                        swampName TEXT,
+                        mountainName TEXT,
+                        borderName1 TEXT,
+                        borderDistance1 REAL,
+                        borderName2 TEXT,
+                        borderDistance2 REAL,
+                        housingTotal INTEGER,
+                        condosTotal INTEGER,
+                        sourceVersion TEXT NOT NULL DEFAULT '',
+                        importedAt INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_community_location_reference_mcode ON community_location_reference (mcode)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_community_location_reference_tcode ON community_location_reference (tcode)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_community_location_reference_acode ON community_location_reference (acode)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_community_location_reference_pcode ON community_location_reference (pcode)")
             }
         }
     }
