@@ -41,6 +41,7 @@ fun AppNavigation(
     viewModel: PersonViewModel,
     repository: com.example.data.PersonRepository,
     firestore: com.google.firebase.firestore.FirebaseFirestore?,
+    communityLocationImportUseCase: com.example.domain.CommunityLocationReferenceImportUseCase,
     authViewModel: com.example.viewmodel.AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     modifier: Modifier = Modifier
 ) {
@@ -232,7 +233,8 @@ fun AppNavigation(
             composable("cloud_sync") {
                 CloudSyncScreen(
                     viewModel = viewModel,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    communityLocationImportUseCase = communityLocationImportUseCase
                 )
             }
             composable("health_knowledge") {
