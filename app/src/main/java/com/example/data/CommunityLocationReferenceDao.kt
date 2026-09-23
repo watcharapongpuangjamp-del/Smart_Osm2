@@ -24,4 +24,10 @@ interface CommunityLocationReferenceDao {
 
     @Query("SELECT COUNT(*) FROM community_location_reference")
     suspend fun count(): Int
+
+    @androidx.room.Transaction
+    suspend fun replaceAll(items: List<CommunityLocationReference>) {
+        deleteAll()
+        if (items.isNotEmpty()) upsertAll(items)
+    }
 }
