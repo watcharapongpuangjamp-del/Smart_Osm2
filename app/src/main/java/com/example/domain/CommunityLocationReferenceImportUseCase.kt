@@ -36,7 +36,7 @@ class CommunityLocationReferenceImportUseCase(
         val parsedItems = CommunityLocationReferenceJsonImporter.parse(json, sourceVersion)
         val validation = CommunityLocationReferenceValidator.validate(parsedItems)
 
-        if (validation.accepted.isEmpty() && parsedItems.isNotEmpty()) {
+        if (parsedItems.isEmpty() || validation.accepted.isEmpty()) {
             throw IllegalStateException("ไม่พบข้อมูลชุมชนที่ผ่านการตรวจสอบสำหรับนำเข้า")
         }
 
