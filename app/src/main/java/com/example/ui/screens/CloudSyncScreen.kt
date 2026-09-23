@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +38,7 @@ fun CloudSyncScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val importScope = rememberCoroutineScope()
 
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val totalPersons by viewModel.totalPersonsCount.collectAsStateWithLifecycle()
@@ -93,17 +95,23 @@ fun CloudSyncScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            try {
-                val json = context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() }
-                    ?: throw IllegalStateException("ไม่สามารถอ่านไฟล์ JSON ได้")
-                val preview = communityLocationImportUseCase.previewJson(json, "file:${it.lastPathSegment ?: "json"}")
-                communityImportJson = json
-                communityImportFileName = it.lastPathSegment ?: "community_location.json"
-                communityImportPreview = preview
-                showCommunityImportPreview = true
-            } catch (e: Exception) {
-                isError = true
-                actionMessage = "ตรวจสอบไฟล์ชุมชนไม่สำเร็จ: ${e.message}"
+            importScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val json = context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() }
+                        ?: throw IllegalStateException("ไม่สามารถอ่านไฟล์ JSON ได้")
+                    val preview = communityLocationImportUseCase.previewJson(json, "file:${it.lastPathSegment ?: "json"}")
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        communityImportJson = json
+                        communityImportFileName = it.lastPathSegment ?: "community_location.json"
+                        communityImportPreview = preview
+                        showCommunityImportPreview = true
+                    }
+                } catch (e: Exception) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        isError = true
+                        actionMessage = "ตรวจสอบไฟล์ชุมชนไม่สำเร็จ: ${e.message}"
+                    }
+                }
             }
         }
     }
@@ -474,7 +482,7 @@ fun CloudSyncScreen(
                     onClick = {
                         val json = communityImportJson ?: return@TextButton
                         communityImportBusy = true
-                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        importScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                             try {
                                 val result = communityLocationImportUseCase.importJson(
                                     json,
