@@ -40,11 +40,11 @@ fun ThaiPhcImportPreviewScreen(
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("สรุปข้อมูล", style = MaterialTheme.typography.titleMedium)
-                Text("ทั้งหมด: \${preview.total}")
-                Text("ตรงกัน: \${preview.matched}")
-                Text("พบใหม่: \${preview.newRecords}")
-                Text("ขัดแย้ง: \${preview.conflicts}")
-                Text("ต้องตรวจสอบ: \${preview.unknown}")
+                Text("ทั้งหมด: ${preview.total}")
+                Text("ตรงกัน: ${preview.matched}")
+                Text("พบใหม่: ${preview.newRecords}")
+                Text("ขัดแย้ง: ${preview.conflicts}")
+                Text("ต้องตรวจสอบ: ${preview.unknown}")
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -71,11 +71,11 @@ private fun ThaiPhcReviewCard(
     val r = item.reference
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("\${r.firstName} \${r.lastName}", style = MaterialTheme.typography.titleMedium)
-            Text("บ้าน \${r.houseNo ?: "-"} หมู่ \${r.moo ?: "-"} ต.\${r.tambon ?: "-"}")
-            Text("สถานะ: \${statusLabel(item.status)}")
-            Text("คะแนน: \${item.score}")
-            item.reasons.forEach { Text("• \$it", style = MaterialTheme.typography.bodySmall) }
+            Text("${r.firstName} ${r.lastName}", style = MaterialTheme.typography.titleMedium)
+            Text("บ้าน ${r.houseNo ?: "-"} หมู่ ${r.moo ?: "-"} ต.${r.tambon ?: "-"}")
+            Text("สถานะ: ${statusLabel(item.status)}")
+            Text("คะแนน: ${item.score}")
+            item.reasons.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onReject) { Text("ไม่รับ") }
