@@ -1,18 +1,11 @@
-package com.example.domain
-
 /**
- * Normalized reference row supplied by ThaiPHC for review before Local DB changes.
- *
- * Nullable location fields are allowed because the external source may not provide
- * all address components.
+ * External reference data must never become the Local Master automatically.
+ * ThaiPHC is represented as reference data first; a user-approved import is
+ * required before changing Smart OSM2 Local records.
  */
-data class ThaiPhcReference(
-    val firstName: String,
-    val lastName: String,
-    val houseNo: String? = null,
-    val moo: String? = null,
-    val tambon: String? = null
-)
+enum class ReferenceSource {
+    THAI_PHC
+}
 
 enum class ReferenceMatchStatus {
     MATCH,
@@ -20,6 +13,20 @@ enum class ReferenceMatchStatus {
     CONFLICT,
     UNKNOWN
 }
+
+data class ThaiPhcReference(
+    val externalId: String? = null,
+    val firstName: String,
+    val lastName: String,
+    val gender: String? = null,
+    val houseNo: String? = null,
+    val moo: String? = null,
+    val tambon: String? = null,
+    val status: String? = null,
+    val relationship: String? = null,
+    val source: ReferenceSource = ReferenceSource.THAI_PHC,
+    val sourceUpdatedAt: Long? = null
+)
 
 data class ThaiPhcMatchResult(
     val reference: ThaiPhcReference,
@@ -30,20 +37,11 @@ data class ThaiPhcMatchResult(
 )
 
 data class ThaiPhcImportPreview(
+    val source: ReferenceSource = ReferenceSource.THAI_PHC,
+    val total: Int,
+    val matched: Int,
+    val newRecords: Int,
+    val conflicts: Int,
+    val unknown: Int,
     val items: List<ThaiPhcMatchResult>
-) {
-    val total: Int
-        get() = items.size
-
-    val matched: Int
-        get() = items.count { it.status == ReferenceMatchStatus.MATCH }
-
-    val newRecords: Int
-        get() = items.count { it.status == ReferenceMatchStatus.NEW }
-
-    val conflicts: Int
-        get() = items.count { it.status == ReferenceMatchStatus.CONFLICT }
-
-    val unknown: Int
-        get() = items.count { it.status == ReferenceMatchStatus.UNKNOWN }
-}
+)
