@@ -1,3 +1,5 @@
+package com.example.domain
+
 /**
  * External reference data must never become the Local Master automatically.
  * ThaiPHC is represented as reference data first; a user-approved import is
