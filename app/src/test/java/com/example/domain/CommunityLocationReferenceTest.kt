@@ -45,7 +45,23 @@ class CommunityLocationReferenceTest {
             mcode = "TEST", mname = "ทดสอบ",
             latitude = 14.0, longitude = 101.0,
             femaleCount = 10, maleCount = 20, populationTotal = 99,
-            householdTotal = 5
+            householdTotal = 5,
+            localAuthority = null,
+            localAuthorityName = null,
+            roadName = null,
+            roadNumber = null,
+            roadDistance = null,
+            riverName = null,
+            seaName = null,
+            lagoonName = null,
+            swampName = null,
+            mountainName = null,
+            borderName1 = null,
+            borderDistance1 = null,
+            borderName2 = null,
+            borderDistance2 = null,
+            housingTotal = null,
+            condosTotal = null
         )
         val result = CommunityLocationReferenceValidator.validate(listOf(item))
         assertEquals(1, result.accepted.size)
