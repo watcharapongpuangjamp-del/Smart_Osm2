@@ -69,13 +69,16 @@ private fun ThaiPhcReviewCard(
     onReject: () -> Unit
 ) {
     val r = item.reference
+    val houseNo = r.houseNo.orEmpty()
+    val moo = r.moo.orEmpty()
+    val tambon = r.tambon.orEmpty()
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("${r.firstName} ${r.lastName}", style = MaterialTheme.typography.titleMedium)
-            Text("บ้าน ${r.houseNo ?: "-"} หมู่ ${r.moo ?: "-"} ต.${r.tambon ?: "-"}")
+            Text("บ้าน $houseNo หมู่ $moo ต.$tambon")
             Text("สถานะ: ${statusLabel(item.status)}")
             Text("คะแนน: ${item.score}")
-            item.reasons.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+            item.reasons.forEach { reason -> Text("• $reason", style = MaterialTheme.typography.bodySmall) }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onReject) { Text("ไม่รับ") }
