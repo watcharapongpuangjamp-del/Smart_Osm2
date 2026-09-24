@@ -6,7 +6,17 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Person::class, Household::class, PersonHistory::class, SyncDeletion::class, CommunityLocationReference::class], version = 11, exportSchema = true)
+@Database(
+    entities = [
+        Person::class,
+        Household::class,
+        PersonHistory::class,
+        SyncDeletion::class,
+        CommunityLocationReference::class
+    ],
+    version = 11,
+    exportSchema = true
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun personDao(): PersonDao
@@ -16,9 +26,17 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun communityLocationReferenceDao(): CommunityLocationReferenceDao
 
     companion object {
-        val MIGRATION_1_2 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) {} }
-        val MIGRATION_2_3 = object : Migration(2, 3) { override fun migrate(db: SupportSQLiteDatabase) {} }
-        val MIGRATION_3_4 = object : Migration(3, 4) { override fun migrate(db: SupportSQLiteDatabase) {} }
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {}
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {}
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {}
+        }
 
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -54,29 +72,8 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("""
-                    CREATE TABLE persons_new (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        personUuid TEXT NOT NULL DEFAULT '',
-                        householdId INTEGER NOT NULL,
-                        nationalId TEXT,
-                        fullName TEXT NOT NULL,
-                        gender TEXT NOT NULL,
-                        birthDate TEXT,
-                        isBirthYearOnly INTEGER NOT NULL DEFAULT 0,
-                        houseStatus TEXT NOT NULL,
-                        personStatus TEXT NOT NULL,
-                        dataStatus TEXT NOT NULL,
-                        FOREIGN KEY(householdId) REFERENCES households(id) ON UPDATE NO ACTION ON DELETE CASCADE
-                    )
-                """)
-                db.execSQL("""
-                    INSERT INTO persons_new (id, personUuid, householdId, nationalId, fullName, gender, birthDate, isBirthYearOnly, houseStatus, personStatus, dataStatus)
-                    SELECT id, CASE WHEN personUuid IS NULL OR personUuid = '' THEN lower(hex(randomblob(16))) ELSE personUuid END,
-                           householdId, CASE WHEN nationalId = '' THEN NULL ELSE nationalId END,
-                           fullName, gender, birthDate, isBirthYearOnly, houseStatus, personStatus, dataStatus
-                    FROM persons
-                """)
+                db.execSQL("CREATE TABLE persons_new (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, personUuid TEXT NOT NULL DEFAULT '', householdId INTEGER NOT NULL, nationalId TEXT, fullName TEXT NOT NULL, gender TEXT NOT NULL, birthDate TEXT, isBirthYearOnly INTEGER NOT NULL DEFAULT 0, houseStatus TEXT NOT NULL, personStatus TEXT NOT NULL, dataStatus TEXT NOT NULL, FOREIGN KEY(householdId) REFERENCES households(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("INSERT INTO persons_new (id, personUuid, householdId, nationalId, fullName, gender, birthDate, isBirthYearOnly, houseStatus, personStatus, dataStatus) SELECT id, CASE WHEN personUuid IS NULL OR personUuid = '' THEN lower(hex(randomblob(16))) ELSE personUuid END, householdId, CASE WHEN nationalId = '' THEN NULL ELSE nationalId END, fullName, gender, birthDate, isBirthYearOnly, houseStatus, personStatus, dataStatus FROM persons")
                 db.execSQL("DROP TABLE persons")
                 db.execSQL("ALTER TABLE persons_new RENAME TO persons")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_persons_householdId ON persons (householdId)")
@@ -89,8 +86,8 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 val currentTime = System.currentTimeMillis()
-                db.execSQL("ALTER TABLE persons ADD COLUMN lastModified INTEGER NOT NULL DEFAULT $currentTime")
-                db.execSQL("ALTER TABLE households ADD COLUMN lastModified INTEGER NOT NULL DEFAULT $currentTime")
+                db.execSQL("ALTER TABLE persons ADD COLUMN lastModified INTEGER NOT NULL DEFAULT " + currentTime)
+                db.execSQL("ALTER TABLE households ADD COLUMN lastModified INTEGER NOT NULL DEFAULT " + currentTime)
             }
         }
 
@@ -108,59 +105,17 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE households ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
             }
         }
-    val MIGRATION_9_10 = object : Migration(9, 10) {
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("""
-                    CREATE TABLE IF NOT EXISTS sync_deletion_journal (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        entityType TEXT NOT NULL,
-                        entityUuid TEXT NOT NULL,
-                        deletedAt INTEGER NOT NULL
-                    )
-                """.trimIndent())
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_deletion_journal (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, entityType TEXT NOT NULL, entityUuid TEXT NOT NULL, deletedAt INTEGER NOT NULL)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_sync_deletion_journal_entityType_entityUuid ON sync_deletion_journal (entityType, entityUuid)")
             }
         }
 
         val MIGRATION_10_11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("""
-                    CREATE TABLE IF NOT EXISTS community_location_reference (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        pcode TEXT NOT NULL,
-                        pname TEXT NOT NULL,
-                        acode TEXT NOT NULL,
-                        aname TEXT NOT NULL,
-                        tcode TEXT NOT NULL,
-                        tname TEXT NOT NULL,
-                        mcode TEXT NOT NULL,
-                        mname TEXT NOT NULL,
-                        latitude REAL,
-                        longitude REAL,
-                        femaleCount INTEGER,
-                        maleCount INTEGER,
-                        populationTotal INTEGER,
-                        householdTotal INTEGER,
-                        localAuthority TEXT,
-                        localAuthorityName TEXT,
-                        roadName TEXT,
-                        roadNumber TEXT,
-                        roadDistance REAL,
-                        riverName TEXT,
-                        seaName TEXT,
-                        lagoonName TEXT,
-                        swampName TEXT,
-                        mountainName TEXT,
-                        borderName1 TEXT,
-                        borderDistance1 REAL,
-                        borderName2 TEXT,
-                        borderDistance2 REAL,
-                        housingTotal INTEGER,
-                        condosTotal INTEGER,
-                        sourceVersion TEXT NOT NULL DEFAULT '',
-                        importedAt INTEGER NOT NULL
-                    )
-                """.trimIndent())
+                db.execSQL("CREATE TABLE IF NOT EXISTS community_location_reference (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, pcode TEXT NOT NULL, pname TEXT NOT NULL, acode TEXT NOT NULL, aname TEXT NOT NULL, tcode TEXT NOT NULL, tname TEXT NOT NULL, mcode TEXT NOT NULL, mname TEXT NOT NULL, latitude REAL, longitude REAL, femaleCount INTEGER, maleCount INTEGER, populationTotal INTEGER, householdTotal INTEGER, localAuthority TEXT, localAuthorityName TEXT, roadName TEXT, roadNumber TEXT, roadDistance REAL, riverName TEXT, seaName TEXT, lagoonName TEXT, swampName TEXT, mountainName TEXT, borderName1 TEXT, borderDistance1 REAL, borderName2 TEXT, borderDistance2 REAL, housingTotal INTEGER, condosTotal INTEGER, sourceVersion TEXT NOT NULL DEFAULT '', importedAt INTEGER NOT NULL)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_community_location_reference_mcode ON community_location_reference (mcode)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_community_location_reference_tcode ON community_location_reference (tcode)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_community_location_reference_acode ON community_location_reference (acode)")
@@ -169,4 +124,3 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
-
