@@ -121,7 +121,6 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_sync_deletion_journal_entityType_entityUuid ON sync_deletion_journal (entityType, entityUuid)")
             }
         }
-    }
 
         val MIGRATION_10_11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
