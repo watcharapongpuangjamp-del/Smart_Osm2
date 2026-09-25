@@ -106,7 +106,7 @@ class LastModifiedRegressionTest {
 
         // 2. Act: Edit person via ViewModel
         val editCandidate = initialPerson!!.copy(fullName = "นาย หลังแก้ไขเสร็จ")
-        viewModel.update(editCandidate)
+        viewModel.update(editCandidate).join()
         testDispatcher.scheduler.advanceUntilIdle()
 
         // 3. Assert: Verify in Room that old lastModified < new lastModified
@@ -141,7 +141,7 @@ class LastModifiedRegressionTest {
 
         // 2. Act: Edit household via ViewModel
         val editCandidate = initialHousehold!!.copy(houseNo = "20/99")
-        viewModel.updateHousehold(editCandidate)
+        viewModel.updateHousehold(editCandidate).join()
         testDispatcher.scheduler.advanceUntilIdle()
 
         // 3. Assert: Verify in Room that old lastModified < new lastModified
@@ -149,7 +149,7 @@ class LastModifiedRegressionTest {
         assertNotNull(updatedHousehold)
         assertEquals("20/99", updatedHousehold?.houseNo)
         assertTrue(
-            "Expected old lastModified ($pastTimestamp) < new lastModified (${updatedHousehold?.lastModified})",
+            "Expected lastModified to advance monotonically ($pastTimestamp -> ${updatedHousehold?.lastModified})",
             pastTimestamp < (updatedHousehold?.lastModified ?: 0L)
         )
     }
