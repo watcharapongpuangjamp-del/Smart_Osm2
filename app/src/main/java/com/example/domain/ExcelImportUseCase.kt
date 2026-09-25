@@ -333,7 +333,7 @@ class ExcelImportUseCase(
                             houseStatus = personToSave.houseStatus,
                             personStatus = personToSave.personStatus,
                             dataStatus = personToSave.dataStatus,
-                            lastModified = System.currentTimeMillis()
+                            lastModified = maxOf(System.currentTimeMillis(), existingPerson.lastModified + 1L)
                         )
                         personDao.updatePerson(updated)
                         historyDao.insert(
