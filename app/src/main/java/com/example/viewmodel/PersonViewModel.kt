@@ -287,8 +287,9 @@ class PersonViewModel(
             }
         }
     }
-    fun updateHousehold(household: Household) = viewModelScope.launch { 
-        repository.updateHousehold(household.copy(lastModified = System.currentTimeMillis())) 
+    fun updateHousehold(household: Household) = viewModelScope.launch {
+        val nextLastModified = maxOf(System.currentTimeMillis(), household.lastModified + 1L)
+        repository.updateHousehold(household.copy(lastModified = nextLastModified))
     }
 
     fun updateHouseholdLocation(
@@ -308,13 +309,14 @@ class PersonViewModel(
                     }
                     return@launch
                 }
+                val now = System.currentTimeMillis()
                 val updated = existing.copy(
                     latitude = latitude,
                     longitude = longitude,
                     locationAccuracy = accuracy,
-                    locationCapturedAt = System.currentTimeMillis(),
+                    locationCapturedAt = now,
                     locationProvider = provider,
-                    lastModified = System.currentTimeMillis()
+                    lastModified = maxOf(now, existing.lastModified + 1L)
                 )
                 repository.updateHousehold(updated)
                 withContext(Dispatchers.Main) {
@@ -347,7 +349,7 @@ class PersonViewModel(
                     locationAccuracy = null,
                     locationCapturedAt = null,
                     locationProvider = null,
-                    lastModified = System.currentTimeMillis()
+                    lastModified = maxOf(System.currentTimeMillis(), existing.lastModified + 1L)
                 )
                 repository.updateHousehold(updated)
                 withContext(Dispatchers.Main) {
@@ -386,8 +388,9 @@ class PersonViewModel(
     fun insert(person: Person) = viewModelScope.launch { 
         repository.insert(person.copy(lastModified = System.currentTimeMillis())) 
     }
-    fun update(person: Person) = viewModelScope.launch { 
-        repository.update(person.copy(lastModified = System.currentTimeMillis())) 
+    fun update(person: Person) = viewModelScope.launch {
+        val nextLastModified = maxOf(System.currentTimeMillis(), person.lastModified + 1L)
+        repository.update(person.copy(lastModified = nextLastModified))
     }
     fun delete(person: Person, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
