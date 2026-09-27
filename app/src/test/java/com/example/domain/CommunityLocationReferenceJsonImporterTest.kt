@@ -33,8 +33,26 @@ class CommunityLocationReferenceJsonImporterTest {
     }
 
     @Test
-    fun missingRequiredCodesAreRejectedByParser() {
-        val json = """[{"pcode":"26","acode":"","tcode":"26010100","mcode":"26010151"}]"""
-        assertTrue(CommunityLocationReferenceJsonImporter.parse(json).isEmpty())
+    fun parsesNumericJsonValuesAsWellAsStringValues() {
+        val json = """[{"pcode":26,"acode":2601,"tcode":26010100,"mcode":26010151,"oct_side15_wmen":455,"oct_side15_men":519,"oct_side15_total":974,"oct_side15_house":306}]"""
+        val result = CommunityLocationReferenceJsonImporter.parse(json)
+        assertEquals(1, result.size)
+        assertEquals(455, result.single().femaleCount)
+        assertEquals(519, result.single().maleCount)
+        assertEquals(974, result.single().populationTotal)
+        assertEquals(306, result.single().householdTotal)
+    }
+
+    @Test
+    fun missingRequiredCodesAreCountedAsRejected() {
+        val json = """[
+          {"pcode":"26","acode":"","tcode":"26010100","mcode":"26010151"},
+          {"pcode":"26","acode":"2601","tcode":"26010100","mcode":"26010152"}
+        ]"""
+        val result = CommunityLocationReferenceJsonImporter.parseDetailed(json)
+        assertEquals(2, result.parsedCount)
+        assertEquals(1, result.rejectedCount)
+        assertEquals(1, result.items.size)
+        assertTrue(result.warnings.any { it.contains("pcode/acode/tcode/mcode") })
     }
 }
