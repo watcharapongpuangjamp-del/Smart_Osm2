@@ -369,6 +369,7 @@ open class RoomFirestoreSyncHelper(
         persons: List<Person> = emptyList()
     ): Result<SyncResult> = withContext(Dispatchers.IO) {
         try {
+            requireAuthenticatedFirebaseUser()
             val firestore = getFirestore()
             
             // Check if household has been tombstoned
