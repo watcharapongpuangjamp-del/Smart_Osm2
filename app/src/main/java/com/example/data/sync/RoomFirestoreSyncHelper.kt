@@ -138,7 +138,7 @@ open class RoomFirestoreSyncHelper(
     // =========================================================================
     private fun remoteMetadata(doc: DocumentSnapshot): SyncMetadata = SyncMetadata(
         lastModified = doc.getLong("updatedAt") ?: 0L,
-        serverUpdatedAt = doc.getLong("serverUpdatedAt"),
+        serverUpdatedAt = firestoreTimestampMillis(doc),
         version = doc.getLong("version") ?: 0L,
         updatedBy = doc.getString("updatedBy"),
         updatedFrom = doc.getString("updatedFrom"),
@@ -680,6 +680,10 @@ open class RoomFirestoreSyncHelper(
     // MAPPERS & UTILITIES
     // =========================================================================
 
+    private fun firestoreTimestampMillis(doc: DocumentSnapshot): Long? =
+        doc.getTimestamp("serverUpdatedAt")?.toDate()?.time
+            ?: doc.getLong("serverUpdatedAt")
+
     private fun householdToMap(household: Household): Map<String, Any?> {
         return mapOf(
             "householdUuid" to household.householdUuid,
@@ -741,7 +745,7 @@ open class RoomFirestoreSyncHelper(
         } ?: DataStatus.NEEDS_REVIEW
 
         val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
-        val serverUpdatedAt = doc.getLong("serverUpdatedAt")
+        val serverUpdatedAt = firestoreTimestampMillis(doc)
         val version = doc.getLong("version") ?: 0L
         val updatedBy = doc.getString("updatedBy")
         val updatedFrom = doc.getString("updatedFrom")
@@ -802,7 +806,7 @@ open class RoomFirestoreSyncHelper(
         } ?: DataStatus.NEEDS_REVIEW
 
         val updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
-        val serverUpdatedAt = doc.getLong("serverUpdatedAt")
+        val serverUpdatedAt = firestoreTimestampMillis(doc)
         val version = doc.getLong("version") ?: 0L
         val updatedBy = doc.getString("updatedBy")
         val updatedFrom = doc.getString("updatedFrom")
