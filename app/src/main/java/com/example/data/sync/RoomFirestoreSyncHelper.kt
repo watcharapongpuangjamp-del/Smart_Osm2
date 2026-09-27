@@ -371,55 +371,62 @@ open class RoomFirestoreSyncHelper(
         try {
             requireAuthenticatedFirebaseUser()
             val firestore = getFirestore()
-            
-            // Check if household has been tombstoned
+
+            // A Cloud tombstone is authoritative for this UUID until an explicit recovery
+            // workflow removes the tombstone. Never resurrect a deleted household/person.
             val hTombstoneRef = firestore.collection(COLLECTION_TOMBSTONES)
                 .document("household_${household.householdUuid}")
                 .get().await()
             if (hTombstoneRef.exists()) {
-                return@withContext Result.failure(IllegalStateException("Cannot sync: Household ${household.householdUuid} was deleted on Cloud."))
+                return@withContext Result.failure(
+                    IllegalStateException("Cannot sync: Household ${household.householdUuid} was deleted on Cloud.")
+                )
             }
 
-            // Filter out tombstoned persons
             val tombstonedPersonUuids = mutableSetOf<String>()
-            if (persons.isNotEmpty()) {
-                for (chunk in persons.map { it.personUuid }.chunked(30)) {
-                    val docs = firestore.collection(COLLECTION_TOMBSTONES)
-                        .whereIn("uuid", chunk)
-                        .get().await()
-                    for (doc in docs.documents) {
-                        tombstonedPersonUuids.add(doc.getString("uuid") ?: "")
+            for (chunk in persons.map { it.personUuid }.chunked(30)) {
+                if (chunk.isEmpty()) continue
+                val docs = firestore.collection(COLLECTION_TOMBSTONES)
+                    .whereIn("uuid", chunk)
+                    .get().await()
+                docs.documents.forEach { doc ->
+                    doc.getString("uuid")?.let(tombstonedPersonUuids::add)
+                }
+            }
+
+            // Use the same transaction-based write path as full Room -> Firestore sync.
+            // This closes the stale pre-read/write race that the former batch implementation had.
+            transactionalHouseholdSave(household)
+            refreshHouseholdSyncMetadata(household.householdUuid)
+
+            var personsSynced = 0
+            for (person in persons) {
+                if (tombstonedPersonUuids.contains(person.personUuid)) continue
+                if (checkTombstoneExists(household.householdUuid, "household")) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Cannot sync: Parent Household ${household.householdUuid} was deleted on Cloud.")
+                    )
+                }
+                try {
+                    transactionalPersonSave(person, household.householdUuid, household.houseNo)
+                    refreshPersonSyncMetadata(person.personUuid)
+                    personsSynced++
+                } catch (e: IllegalStateException) {
+                    if (e.message?.contains("Cloud มีข้อมูลบุคคลใหม่กว่า") == true) {
+                        Log.w(TAG, "Skipping person ${person.personUuid}: Cloud is newer")
+                    } else {
+                        throw e
                     }
                 }
             }
-            
-            val validPersons = persons.filter { !tombstonedPersonUuids.contains(it.personUuid) }
 
-            val batch = firestore.batch()
-
-            val hRef = firestore.collection(COLLECTION_HOUSEHOLDS).document(household.householdUuid)
-            val remoteHousehold = hRef.get().await()
-            if (remoteHousehold.exists() && !shouldUpload(localMetadata(household), remoteMetadata(remoteHousehold))) {
-                return@withContext Result.failure(IllegalStateException("Cloud มีข้อมูลครัวเรือนใหม่กว่า จึงไม่เขียนทับ"))
-            }
-            val householdData = householdToVersionedMap(household, remoteHousehold)
-            batch.set(hRef, householdData, SetOptions.merge())
-
-            for (p in validPersons) {
-                val pRef = firestore.collection(COLLECTION_PERSONS).document(p.personUuid)
-                val remotePerson = pRef.get().await()
-                if (remotePerson.exists() && !shouldUpload(localMetadata(p), remoteMetadata(remotePerson))) continue
-                batch.set(pRef, personToVersionedMap(p, household.householdUuid, household.houseNo, remotePerson), SetOptions.merge())
-            }
-
-            batch.commit().await()
-
-            val result = SyncResult(
-                householdsSynced = 1,
-                personsSynced = validPersons.size,
-                message = "บันทึกครัวเรือนเลขที่ ${household.houseNo} ไปยัง Firestore เรียบร้อย"
+            Result.success(
+                SyncResult(
+                    householdsSynced = 1,
+                    personsSynced = personsSynced,
+                    message = "บันทึกครัวเรือนเลขที่ ${household.houseNo} ไปยัง Firestore เรียบร้อย"
+                )
             )
-            Result.success(result)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync household ${household.houseNo}", e)
             Result.failure(e)
