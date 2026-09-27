@@ -1,100 +1,122 @@
 package com.example.domain
 
 import com.example.data.CommunityLocationReference
-import com.squareup.moshi.Json
-import com.squareup.moshi.JsonClass
+import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 
-@JsonClass(generateAdapter = true)
-data class CommunityLocationReferenceJsonRow(
-    val pcode: String? = null,
-    val pname: String? = null,
-    val acode: String? = null,
-    val aname: String? = null,
-    val tcode: String? = null,
-    val tname: String? = null,
-    val mcode: String? = null,
-    val mname: String? = null,
-    @Json(name = "oct_side15_lat") val latitude: String? = null,
-    @Json(name = "oct_side15_lon") val longitude: String? = null,
-    @Json(name = "oct_side15_wmen") val femaleCount: String? = null,
-    @Json(name = "oct_side15_men") val maleCount: String? = null,
-    @Json(name = "oct_side15_total") val populationTotal: String? = null,
-    @Json(name = "oct_side15_house") val householdTotal: String? = null,
-    @Json(name = "oct_side15_local") val localAuthority: String? = null,
-    @Json(name = "oct_side15_local_name") val localAuthorityName: String? = null,
-    @Json(name = "oct_side15_road_name") val roadName: String? = null,
-    @Json(name = "oct_side15_road_num") val roadNumber: String? = null,
-    @Json(name = "oct_side15_road_distance") val roadDistance: String? = null,
-    @Json(name = "oct_side15_river_name") val riverName: String? = null,
-    @Json(name = "oct_side15_sea_name") val seaName: String? = null,
-    @Json(name = "oct_side15_lagoon_name") val lagoonName: String? = null,
-    @Json(name = "oct_side15_swamp_name") val swampName: String? = null,
-    @Json(name = "oct_side15_mountain_name") val mountainName: String? = null,
-    @Json(name = "oct_side15_border_name1") val borderName1: String? = null,
-    @Json(name = "oct_side15_border_distance1") val borderDistance1: String? = null,
-    @Json(name = "oct_side15_border_name2") val borderName2: String? = null,
-    @Json(name = "oct_side15_border_distance2") val borderDistance2: String? = null,
-    @Json(name = "oct_side15_housing_total") val housingTotal: String? = null,
-    @Json(name = "oct_side15_condos_total") val condosTotal: String? = null
+data class CommunityLocationParseResult(
+    val items: List<CommunityLocationReference>,
+    val parsedCount: Int,
+    val rejectedCount: Int,
+    val warnings: List<String>
 )
 
 object CommunityLocationReferenceJsonImporter {
-    private val adapter = Moshi.Builder()
-        .build()
-        .adapter<List<CommunityLocationReferenceJsonRow>>(
-            Types.newParameterizedType(
-                List::class.java,
-                CommunityLocationReferenceJsonRow::class.java
-            )
-        )
+    private val adapter: JsonAdapter<List<Map<String, Any?>>> = run {
+        val rowType = Types.newParameterizedType(Map::class.java, String::class.java, Any::class.java)
+        val listType = Types.newParameterizedType(List::class.java, rowType)
+        Moshi.Builder().build().adapter(listType)
+    }
 
-    fun parse(json: String, sourceVersion: String = ""): List<CommunityLocationReference> {
+    fun parse(json: String, sourceVersion: String = "", sourceHash: String = ""): List<CommunityLocationReference> =
+        parseDetailed(json, sourceVersion, sourceHash).items
+
+    fun parseDetailed(
+        json: String,
+        sourceVersion: String = "",
+        sourceHash: String = ""
+    ): CommunityLocationParseResult {
+        val rows = adapter.fromJson(json).orEmpty()
         val now = System.currentTimeMillis()
-        return adapter.fromJson(json).orEmpty().mapNotNull { row ->
-            val pcode = row.pcode?.trim().orEmpty()
-            val acode = row.acode?.trim().orEmpty()
-            val tcode = row.tcode?.trim().orEmpty()
-            val mcode = row.mcode?.trim().orEmpty()
+        var rejectedCount = 0
+        val warnings = mutableListOf<String>()
+
+        val items = rows.mapIndexedNotNull { index, row ->
+            val pcode = stringValue(row["pcode"])
+            val acode = stringValue(row["acode"])
+            val tcode = stringValue(row["tcode"])
+            val mcode = stringValue(row["mcode"])
+
             if (pcode.isBlank() || acode.isBlank() || tcode.isBlank() || mcode.isBlank()) {
-                null
-            } else {
-                CommunityLocationReference(
-                    pcode = pcode,
-                    pname = row.pname?.trim().orEmpty(),
-                    acode = acode,
-                    aname = row.aname?.trim().orEmpty(),
-                    tcode = tcode,
-                    tname = row.tname?.trim().orEmpty(),
-                    mcode = mcode,
-                    mname = row.mname?.trim().orEmpty(),
-                    latitude = row.latitude?.toDoubleOrNull(),
-                    longitude = row.longitude?.toDoubleOrNull(),
-                    femaleCount = row.femaleCount?.toIntOrNull(),
-                    maleCount = row.maleCount?.toIntOrNull(),
-                    populationTotal = row.populationTotal?.toIntOrNull(),
-                    householdTotal = row.householdTotal?.toIntOrNull(),
-                    localAuthority = row.localAuthority?.trim(),
-                    localAuthorityName = row.localAuthorityName?.trim(),
-                    roadName = row.roadName?.trim(),
-                    roadNumber = row.roadNumber?.trim(),
-                    roadDistance = row.roadDistance?.toDoubleOrNull(),
-                    riverName = row.riverName?.trim(),
-                    seaName = row.seaName?.trim(),
-                    lagoonName = row.lagoonName?.trim(),
-                    swampName = row.swampName?.trim(),
-                    mountainName = row.mountainName?.trim(),
-                    borderName1 = row.borderName1?.trim(),
-                    borderDistance1 = row.borderDistance1?.toDoubleOrNull(),
-                    borderName2 = row.borderName2?.trim(),
-                    borderDistance2 = row.borderDistance2?.toDoubleOrNull(),
-                    housingTotal = row.housingTotal?.toIntOrNull(),
-                    condosTotal = row.condosTotal?.toIntOrNull(),
-                    sourceVersion = sourceVersion,
-                    importedAt = now
-                )
+                rejectedCount++
+                warnings += "รายการที่ " + (index + 1) + " ถูกตัดออก: pcode/acode/tcode/mcode ไม่ครบ"
+                return@mapIndexedNotNull null
             }
+
+            fun numberString(key: String): String? =
+                stringValue(row[key]).takeIf { it.isNotBlank() }
+
+            CommunityLocationReference(
+                pcode = pcode,
+                pname = stringValue(row["pname"]),
+                acode = acode,
+                aname = stringValue(row["aname"]),
+                tcode = tcode,
+                tname = stringValue(row["tname"]),
+                mcode = mcode,
+                mname = stringValue(row["mname"]),
+                latitude = numberString("oct_side15_lat")?.toDoubleOrNullWithWarning("oct_side15_lat", index, warnings),
+                longitude = numberString("oct_side15_lon")?.toDoubleOrNullWithWarning("oct_side15_lon", index, warnings),
+                femaleCount = numberString("oct_side15_wmen")?.toIntOrNullFlexible("oct_side15_wmen", index, warnings),
+                maleCount = numberString("oct_side15_men")?.toIntOrNullFlexible("oct_side15_men", index, warnings),
+                populationTotal = numberString("oct_side15_total")?.toIntOrNullFlexible("oct_side15_total", index, warnings),
+                householdTotal = numberString("oct_side15_house")?.toIntOrNullFlexible("oct_side15_house", index, warnings),
+                localAuthority = stringValue(row["oct_side15_local"]).takeIf { it.isNotBlank() },
+                localAuthorityName = stringValue(row["oct_side15_local_name"]).takeIf { it.isNotBlank() },
+                roadName = stringValue(row["oct_side15_road_name"]).takeIf { it.isNotBlank() },
+                roadNumber = stringValue(row["oct_side15_road_num"]).takeIf { it.isNotBlank() },
+                roadDistance = numberString("oct_side15_road_distance")?.toDoubleOrNullWithWarning("oct_side15_road_distance", index, warnings),
+                riverName = stringValue(row["oct_side15_river_name"]).takeIf { it.isNotBlank() },
+                seaName = stringValue(row["oct_side15_sea_name"]).takeIf { it.isNotBlank() },
+                lagoonName = stringValue(row["oct_side15_lagoon_name"]).takeIf { it.isNotBlank() },
+                swampName = stringValue(row["oct_side15_swamp_name"]).takeIf { it.isNotBlank() },
+                mountainName = stringValue(row["oct_side15_mountain_name"]).takeIf { it.isNotBlank() },
+                borderName1 = stringValue(row["oct_side15_border_name1"]).takeIf { it.isNotBlank() },
+                borderDistance1 = numberString("oct_side15_border_distance1")?.toDoubleOrNullWithWarning("oct_side15_border_distance1", index, warnings),
+                borderName2 = stringValue(row["oct_side15_border_name2"]).takeIf { it.isNotBlank() },
+                borderDistance2 = numberString("oct_side15_border_distance2")?.toDoubleOrNullWithWarning("oct_side15_border_distance2", index, warnings),
+                housingTotal = numberString("oct_side15_housing_total")?.toIntOrNullFlexible("oct_side15_housing_total", index, warnings),
+                condosTotal = numberString("oct_side15_condos_total")?.toIntOrNullFlexible("oct_side15_condos_total", index, warnings),
+                sourceVersion = sourceVersion,
+                sourceHash = sourceHash,
+                importedAt = now
+            )
         }
+
+        return CommunityLocationParseResult(
+            items = items,
+            parsedCount = rows.size,
+            rejectedCount = rejectedCount,
+            warnings = warnings
+        )
+    }
+
+    private fun stringValue(value: Any?): String = when (value) {
+        null -> ""
+        is String -> value.trim()
+        is Number -> value.toString()
+        else -> value.toString().trim()
+    }
+
+    private fun String.toDoubleOrNullWithWarning(
+        key: String,
+        rowIndex: Int,
+        warnings: MutableList<String>
+    ): Double? = toDoubleOrNull().also {
+        if (it == null) warnings += "รายการที่ " + (rowIndex + 1) + ": ค่า " + key + " ไม่ใช่ตัวเลขที่อ่านได้"
+    }
+
+    private fun String.toIntOrNullFlexible(
+        key: String,
+        rowIndex: Int,
+        warnings: MutableList<String>
+    ): Int? {
+        val direct = toIntOrNull()
+        if (direct != null) return direct
+        val decimal = toDoubleOrNull()
+        if (decimal != null && decimal.isFinite() && decimal % 1.0 == 0.0) return decimal.toInt()
+        warnings += "รายการที่ " + (rowIndex + 1) + ": ค่า " + key + " ไม่ใช่จำนวนเต็มที่อ่านได้"
+        return null
     }
 }
