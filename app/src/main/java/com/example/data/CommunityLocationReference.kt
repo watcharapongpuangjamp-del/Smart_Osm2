@@ -45,5 +45,6 @@ data class CommunityLocationReference(
     val housingTotal: Int?,
     val condosTotal: Int?,
     val sourceVersion: String = "",
+    val sourceHash: String = "",
     val importedAt: Long = System.currentTimeMillis()
 )
